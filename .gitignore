@@ -44,3 +44,13 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 *.env
+
+ARQUITECTURA.md
+blockchain_implementation_guide.md
+DEPLOY_SUCCESS.md
+despliegue.md
+explicacion_y_sugerencias.md
+GANACHE_CONFIG.md
+INFURA_GUIDE.md
+README.md
+SOLIDITY_REQUIREMENTS.md
