@@ -1,6 +1,6 @@
-import '../services/ApiService.dart';
-import '../models/contrato_model.dart';
-import '../models/response_model.dart';
+import '../datos/ApiService.dart';
+import 'models/contrato_model.dart';
+import 'models/response_model.dart';
 
 class ContratoNegocio {
   final ApiService apiService;

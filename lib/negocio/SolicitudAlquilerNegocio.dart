@@ -1,6 +1,6 @@
-import '../services/ApiService.dart';
-import '../models/solicitud_alquiler_model.dart';
-import '../models/response_model.dart';
+import '../datos/ApiService.dart';
+import 'models/solicitud_alquiler_model.dart';
+import 'models/response_model.dart';
 
 class SolicitudAlquilerNegocio {
   final ApiService apiService;

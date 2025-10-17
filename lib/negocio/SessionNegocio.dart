@@ -1,5 +1,5 @@
-import '../models/database/session_dao.dart';
-import '../models/session_model.dart';
+import '../datos/database/session_dao.dart';
+import 'models/session_model.dart';
 
 class SessionNegocio{
   late SessionDao sessionDao;

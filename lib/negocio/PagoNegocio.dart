@@ -1,6 +1,6 @@
-import '../services/ApiService.dart';
-import '../models/pago_model.dart';
-import '../models/response_model.dart';
+import '../datos/ApiService.dart';
+import 'models/pago_model.dart';
+import 'models/response_model.dart';
 
 class PagoNegocio {
   final ApiService apiService;

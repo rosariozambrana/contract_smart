@@ -1,48 +1,49 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
-import 'controllers_providers/authenticated_provider.dart';
-import 'controllers_providers/blockchain_provider.dart';
-import 'controllers_providers/contrato_provider.dart';
-import 'controllers_providers/inmueble_provider.dart';
-import 'controllers_providers/pago_provider.dart';
-import 'controllers_providers/solicitud_alquiler_provider.dart';
-import 'controllers_providers/user_global_provider.dart';
-import 'services/ApiService.dart';
-import 'services/UrlConfigProvider.dart';
-import 'services/notification_service.dart';
-import 'services/socket_service.dart';
-import 'services/websocket_admin_service.dart';
-import 'vista/auth/login_screen.dart';
-import 'vista/auth/register_screen.dart';
-import 'vista/auth/edit_profile_screen.dart';
-import 'vista/home_cliente/home_cliente_screen.dart';
-import 'vista/home_propietario/home_propietario_screen.dart';
-import 'vista/inmueble/inmueble_screen.dart';
-import 'vista/admin/websocket_admin_screen.dart';
-import 'vista/notifications/notification_center_screen.dart';
+// CAPA DE PRESENTACIÓN
+import 'presentacion/providers/authenticated_provider.dart';
+import 'presentacion/providers/blockchain_provider.dart';
+import 'presentacion/providers/contrato_provider.dart';
+import 'presentacion/providers/inmueble_provider.dart';
+import 'presentacion/providers/pago_provider.dart';
+import 'presentacion/providers/solicitud_alquiler_provider.dart';
+import 'presentacion/providers/user_global_provider.dart';
+import 'presentacion/screens/auth/login_screen.dart';
+import 'presentacion/screens/auth/register_screen.dart';
+import 'presentacion/screens/auth/edit_profile_screen.dart';
+import 'presentacion/screens/home_cliente/home_cliente_screen.dart';
+import 'presentacion/screens/home_propietario/home_propietario_screen.dart';
+import 'presentacion/screens/inmueble/inmueble_screen.dart';
+import 'presentacion/screens/admin/websocket_admin_screen.dart';
+import 'presentacion/screens/notifications/notification_center_screen.dart';
+
+// CAPA DE DATOS
+import 'datos/ApiService.dart';
+import 'datos/UrlConfigProvider.dart';
+import 'datos/notification_service.dart';
+import 'datos/socket_service.dart';
+import 'datos/websocket_admin_service.dart';
 import 'package:overlay_support/overlay_support.dart'; 
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: ".env");
 
-  // Initialize blockchain provider
-  await BlockchainProvider.instance.initializeFromEnv();
+  // Blockchain se inicializa lazy (cuando se necesite por primera vez)
+  // Usa ensureInitialized() automáticamente antes de cada operación
 
   // Initialize notification service
   final notificationService = NotificationService();
   final socketService = SocketService();
   await notificationService.initialize();
 
-  // Create and initialize the UrlConfigProvider first
-  final urlConfigProvider = UrlConfigProvider();
+  // Create and initialize the UrlConfigProvider first (espera a que cargue SharedPreferences)
+  final urlConfigProvider = await UrlConfigProvider.create();
 
-  // Set it as the shared provider for ApiService
+  // Set it as the shared provider for ApiService and SocketService
   ApiService.setSharedUrlConfigProvider(urlConfigProvider);
-
-  // ESPERAR a que UrlConfigProvider esté completamente inicializado
-  await Future.delayed(const Duration(milliseconds: 100));
+  socketService.setUrlConfigProvider(urlConfigProvider);
 
   // Initialize socket service after UrlConfigProvider is created
   
@@ -60,14 +61,14 @@ void main() async {
 }
 
 class MyApp extends StatefulWidget {
-  final UrlConfigProvider? urlConfigProvider;
+  final UrlConfigProvider urlConfigProvider;
   final NotificationService notificationService;
   final SocketService socketService;
   final WebSocketAdminService websocketAdminService;
 
   const MyApp({
-    super.key, 
-    this.urlConfigProvider,
+    super.key,
+    required this.urlConfigProvider,
     required this.notificationService,
     required this.socketService,
     required this.websocketAdminService,
@@ -94,9 +95,9 @@ class _MyAppState extends State<MyApp> {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        // Use the provided UrlConfigProvider if available, otherwise create a new one
+        // Use the provided UrlConfigProvider (ya inicializado en main)
         ChangeNotifierProvider<UrlConfigProvider>.value(
-          value: widget.urlConfigProvider ?? UrlConfigProvider(),
+          value: widget.urlConfigProvider,
         ),
         // Global user provider (singleton)
         ChangeNotifierProvider<UserGlobalProvider>.value(

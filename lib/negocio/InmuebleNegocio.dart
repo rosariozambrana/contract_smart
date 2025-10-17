@@ -1,6 +1,6 @@
-import '../services/ApiService.dart';
-import '../models/inmueble_model.dart';
-import '../models/response_model.dart';
+import '../datos/ApiService.dart';
+import 'models/inmueble_model.dart';
+import 'models/response_model.dart';
 
 class InmuebleNegocio {
   final ApiService apiService;

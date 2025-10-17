@@ -1,7 +1,7 @@
-import 'package:rentals/models/session_model.dart';
-import '../models/response_model.dart';
-import '../models/user_model.dart';
-import '../services/ApiService.dart';
+import 'package:rentals/negocio/models/session_model.dart';
+import 'models/response_model.dart';
+import 'models/user_model.dart';
+import '../datos/ApiService.dart';
 import '../utils/HandlerDateTime.dart';
 import 'SessionNegocio.dart';
 import 'UserNegocio.dart';
