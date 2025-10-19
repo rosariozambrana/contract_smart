@@ -322,14 +322,13 @@ class _RegisterScreenState extends State<RegisterScreen> implements Authenticate
   }
 
   @override
-  Future<void> navigateToHomeCliente() {
-    // TODO: implement navigateToHomeCliente
-    throw UnimplementedError();
+  Future<void> navigateToHomeCliente() async {
+    // Navegar a la pantalla de inmuebles disponibles para que el cliente pueda ver y alquilar
+    Navigator.of(context).pushReplacementNamed('/home');
   }
 
   @override
-  Future<void> navigateToHomePropietario() {
-    // TODO: implement navigateToHomePropietario
-    throw UnimplementedError();
+  Future<void> navigateToHomePropietario() async {
+    Navigator.of(context).pushReplacementNamed('/homePropietario');
   }
 }

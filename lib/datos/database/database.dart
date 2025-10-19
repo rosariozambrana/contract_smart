@@ -19,7 +19,6 @@ class AppDatabase {
         telefono TEXT NULL,
         photoPath TEXT NULL,
         tipo_usuario TEXT,
-        tipo_cliente TEXT NULL,
         direccion TEXT NULL,
         created_at INTEGER,
         updated_at INTEGER

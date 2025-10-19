@@ -678,6 +678,22 @@ class ContratoProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Limpiar todos los datos del provider
+  Future<void> clear() async {
+    _contratos.clear();
+    _contratosPendientesCliente.clear();
+    _contratosPendientesPropietario.clear();
+    _contratosActivosCliente.clear();
+    _contratosActivosPropietario.clear();
+    _condicionales.clear();
+    _selectedContrato = null;
+    _currentUser = null;
+    _message = null;
+    _isLoading = false;
+    print('   - ContratoProvider limpiado completamente');
+    notifyListeners();
+  }
+
   String? get message => _message;
 
   set message(String? value) {

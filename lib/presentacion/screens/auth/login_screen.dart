@@ -151,14 +151,63 @@ class _LoginScreenState extends State<LoginScreen> implements AuthenticatedScree
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Text("No tines una cuenta?"),
+                            const Text(
+                              "¿No tienes cuenta?",
+                              style: TextStyle(fontSize: 14),
+                            ),
                             TextButton(
                               onPressed: () {
                                 Navigator.of(context).pushReplacementNamed('/register');
                               },
-                              child: const Text('Registrate aquí'),
+                              child: const Text(
+                                'Regístrate aquí',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
                           ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              height: 1,
+                              width: 40,
+                              color: Colors.grey.shade400,
+                            ),
+                            const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 8.0),
+                              child: Text(
+                                'o',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ),
+                            Container(
+                              height: 1,
+                              width: 40,
+                              color: Colors.grey.shade400,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).pushReplacementNamed('/homeVisitante');
+                          },
+                          child: const Text(
+                            'continuar como invitado',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -177,8 +226,8 @@ class _LoginScreenState extends State<LoginScreen> implements AuthenticatedScree
 
     if (!mounted) return;
 
-    // Simply navigate to home screen without actual authentication
-    Navigator.of(context).pushReplacementNamed('/homeCliente');
+    // Navegar a la pantalla de inmuebles disponibles para que el cliente pueda ver y alquilar
+    Navigator.of(context).pushReplacementNamed('/home');
   }
 
   @override

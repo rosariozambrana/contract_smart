@@ -87,7 +87,6 @@ class AuthenticatedProvider extends ChangeNotifier{
       ResponseModel responseModel = await authenticatedNegocio.login(emailController.text, passwordController.text);
       print('Response model en provider: ${responseModel.data}');
       if (responseModel.statusCode == 200) {
-        message = responseModel.message;
         print('Response model en provider: ${responseModel.data}');
         userActual = UserModel.mapToModel(responseModel.data);
 
@@ -107,11 +106,9 @@ class AuthenticatedProvider extends ChangeNotifier{
           print('Error updating wallet address: $e');
         }
 
-        messageType = responseModel.isSuccess ? MessageType.success : MessageType.error;
         isSuccess = responseModel.isSuccess;
-        message = responseModel.isSuccess ? responseModel.message : ('${responseModel.message}\n${responseModel.messageError}').toString();
         isLoading = false;
-        print('Usuario actual: ${userActual!.tipoUsuario}');
+        //print('Usuario actual: ${userActual!.tipoUsuario}');
         if(userActual!.tipoUsuario == 'propietario') {
           print("moviendo a dashboard propietario");
           authenticatedScreenState.navigateToHomePropietario();
@@ -144,7 +141,6 @@ class AuthenticatedProvider extends ChangeNotifier{
       telefono: phoneController.text,
       direccion: direccionController.text,
       tipoUsuario: isPropietario ? 'propietario' : 'cliente',
-      tipoCliente: isPropietario ? 'particular' : 'normal',
     );
     if (userActual == null) {
       isLoading = false;
@@ -153,9 +149,11 @@ class AuthenticatedProvider extends ChangeNotifier{
     }
     ResponseModel responseModel = await authenticatedNegocio.createUser(userActual!, passwordController.text, confirmPasswordController.text);
     print('Response model en provider: ${responseModel.data}');
-    if (responseModel.statusCode == 200) {
-      message = responseModel.message;
-      print('Response model en provider: ${responseModel.data}');
+    print('Status code: ${responseModel.statusCode}');
+    print('Is success: ${responseModel.isSuccess}');
+    if (responseModel.isSuccess) {
+      // No establecer mensaje de éxito para evitar confusión
+      //print('Response model en provider: ${responseModel.data}');
       userActual = UserModel.mapToModel(responseModel.data);
       if(userActual == null) {
         messageType = MessageType.error;
@@ -181,10 +179,12 @@ class AuthenticatedProvider extends ChangeNotifier{
         print('Error updating wallet address: $e');
       }
 
-      messageType = MessageType.success;
+      // Establecer estado exitoso sin mensaje
       isSuccess = true;
       isLoading = false;
       print('Usuario actual: ${userActual!.tipoUsuario}');
+
+      // Navegar al dashboard correspondiente
       if(userActual!.tipoUsuario == 'propietario') {
         print("moviendo a dashboard propietario");
         authenticatedScreenState.navigateToHomePropietario();
@@ -198,9 +198,6 @@ class AuthenticatedProvider extends ChangeNotifier{
       isSuccess = false;
       message = ('${responseModel.message}\n${responseModel.messageError}').toString();
     }
-    messageType = MessageType.error;
-    isLoading = false;
-    isSuccess = false;
   }
 
   Future<void> loadUserSession() async {
@@ -214,14 +211,11 @@ class AuthenticatedProvider extends ChangeNotifier{
       isLoading = true;
       UserModel? userAct = await authenticatedNegocio.getUserSession();
       if (userAct != null) {
-        messageType = MessageType.success;
-        message = 'Existe un usuario autenticado';
         isSuccess = true;
         print('Usuario actual: ${userAct.tipoUsuario}');
       } else {
-        messageType = MessageType.info;
         isSuccess = false;
-        message = 'Iniciar sesión para continuar';
+        // No establecer mensaje cuando no hay usuario en la carga inicial
       }
       isLoading = false;
       return userAct;
@@ -232,6 +226,9 @@ class AuthenticatedProvider extends ChangeNotifier{
   }
 
   Future<bool> logout() async {
+    print('🚪 LOGOUT INICIADO');
+    print('   - Usuario actual antes de logout: ${userActual?.email} (ID: ${userActual?.id})');
+
     isLoading = true;
     ResponseModel responseModel = await authenticatedNegocio.logout(userActual!.id);
     if (responseModel.statusCode == 200) {
@@ -241,14 +238,21 @@ class AuthenticatedProvider extends ChangeNotifier{
       // Clear global user state
       _userGlobalProvider.clearUser();
 
+      // Clear text controllers
+      emailController.clear();
+      passwordController.clear();
+
       messageType = MessageType.success;
       isSuccess = true;
       isLoading = false;
+
+      print('✅ LOGOUT EXITOSO - Usuario limpiado');
     } else {
       messageType = MessageType.error;
       isLoading = false;
       isSuccess = false;
       message = ('${responseModel.message}\n${responseModel.messageError}').toString();
+      print('❌ LOGOUT FALLÓ');
     }
     return isSuccess;
   }

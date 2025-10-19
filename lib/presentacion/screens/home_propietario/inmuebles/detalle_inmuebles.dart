@@ -11,6 +11,7 @@ import '../../../../negocio/models/inmueble_model.dart';
 import '../../../../negocio/models/galeria_inmueble_model.dart';
 import '../../../providers/inmueble_provider.dart';
 import '../../components/Loading.dart';
+import 'my_inmuebles_screen.dart';
 
 class DetalleInmueblesScreen extends StatefulWidget {
   final bool isEditing;
@@ -70,15 +71,41 @@ class _DetalleInmueblesScreenState extends State<DetalleInmueblesScreen> {
         _loadGaleriaInmueble();
       });
     }
-    // Load property types and basic services
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadTipoInmuebles();
-      _loadServiciosBasicos();
+    // Initialize provider and load property types and basic services
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      print('🚀 INICIANDO DetalleInmueblesScreen');
+      print('   - isEditing: ${widget.isEditing}');
+
+      final provider = context.read<InmuebleProvider>();
+      print('   - Provider isInitialized: ${provider.isInitialized}');
+      print('   - CurrentUser antes: ${provider.currentUser != null ? "EXISTE (ID: ${provider.currentUser!.id})" : "NULL"}');
+
+      // Inicializar provider si no está inicializado (carga el usuario actual)
+      if (!provider.isInitialized) {
+        print('⏳ Inicializando provider...');
+        await provider.initialize();
+        print('✅ Provider inicializado. CurrentUser: ${provider.currentUser != null ? "EXISTE (ID: ${provider.currentUser!.id})" : "NULL"}');
+      } else {
+        print('✅ Provider ya estaba inicializado');
+      }
+
+      // Luego cargar tipos y servicios
+      await _loadTipoInmuebles();
+      await _loadServiciosBasicos();
     });
   }
 
   Future<void> _loadTipoInmuebles() async {
     await context.read<InmuebleProvider>().loadTipoInmueble();
+    // Si no estamos editando y se cargaron tipos de inmueble, usar el primero
+    if (!widget.isEditing && mounted) {
+      final tipoInmuebles = context.read<InmuebleProvider>().tipoInmuebles;
+      if (tipoInmuebles.isNotEmpty) {
+        setState(() {
+          _tipoInmuebleId = tipoInmuebles.first.id;
+        });
+      }
+    }
   }
 
   Future<void> _loadServiciosBasicos() async {
@@ -158,6 +185,14 @@ class _DetalleInmueblesScreenState extends State<DetalleInmueblesScreen> {
   Future<void> _saveInmueble() async {
     if (_formKey.currentState!.validate()) {
       final provider = context.read<InmuebleProvider>();
+
+      // 🔍 DEBUG: Verificar estado del provider antes de crear inmueble
+      print('═══════════════════════════════════════════════════════');
+      print('🏗️ INICIANDO CREACIÓN/EDICIÓN DE INMUEBLE');
+      print('📋 Provider isInitialized: ${provider.isInitialized}');
+      print('👤 CurrentUser: ${provider.currentUser != null ? "CARGADO (ID: ${provider.currentUser!.id})" : "❌ NULL"}');
+      print('✏️ Modo edición: ${widget.isEditing}');
+
       provider.isLoading = true;
       // Create or update the property
       InmuebleModel inmueble = InmuebleModel(
@@ -172,10 +207,15 @@ class _DetalleInmueblesScreenState extends State<DetalleInmueblesScreen> {
         servicios_basicos: _selectedServices,
         tipoInmuebleId: _tipoInmuebleId,
       );
-      print('Inmueble: ${inmueble.toMap()}');
+
+      print('📦 Inmueble creado:');
+      print('   - ID: ${inmueble.id}');
+      print('   - User ID: ${inmueble.userId} ${inmueble.userId == 0 ? "⚠️ CERO!" : "✅"}');
+      print('   - Nombre: ${inmueble.nombre}');
+      print('   - Tipo Inmueble ID: ${inmueble.tipoInmuebleId}');
+      print('═══════════════════════════════════════════════════════');
 
       bool success;
-      print('isEditing: ${widget.isEditing}');
       if (widget.isEditing) {
         success = await provider.updateInmueble(inmueble);
       } else {
@@ -221,7 +261,13 @@ class _DetalleInmueblesScreenState extends State<DetalleInmueblesScreen> {
               backgroundColor: Colors.green,
             ),
           );
-          Navigator.pop(context);
+          // Navegar a la lista de inmuebles para ver el inmueble creado/actualizado
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const MyInmueblesScreen(),
+            ),
+          );
         }
       } else {
         if (mounted) {
@@ -439,25 +485,49 @@ class _DetalleInmueblesScreenState extends State<DetalleInmueblesScreen> {
                         },
                       ),
                       const SizedBox(height: 16),
-                      DropdownButtonFormField<int>(
-                        decoration: const InputDecoration(
-                          labelText: 'Tipo de Inmueble',
-                          border: OutlineInputBorder(),
-                        ),
-                        value: _tipoInmuebleId,
-                        items:
-                            context.watch<InmuebleProvider>().tipoInmuebles.map(
-                              (tipo) {
-                                return DropdownMenuItem<int>(
-                                  value: tipo.id,
-                                  child: Text(tipo.nombre),
-                                );
-                              },
-                            ).toList(),
-                        onChanged: (value) {
-                          setState(() {
-                            _tipoInmuebleId = value ?? 1;
-                          });
+                      Consumer<InmuebleProvider>(
+                        builder: (context, provider, child) {
+                          final tipoInmuebles = provider.tipoInmuebles;
+
+                          // Si no hay tipos de inmueble, mostrar mensaje
+                          if (tipoInmuebles.isEmpty) {
+                            return TextFormField(
+                              decoration: const InputDecoration(
+                                labelText: 'Tipo de Inmueble',
+                                border: OutlineInputBorder(),
+                                helperText: 'Cargando tipos de inmueble...',
+                              ),
+                              enabled: false,
+                            );
+                          }
+
+                          // Verificar si el valor actual existe en la lista
+                          final valueExists = tipoInmuebles.any((t) => t.id == _tipoInmuebleId);
+
+                          return DropdownButtonFormField<int>(
+                            decoration: const InputDecoration(
+                              labelText: 'Tipo de Inmueble',
+                              border: OutlineInputBorder(),
+                            ),
+                            value: valueExists ? _tipoInmuebleId : tipoInmuebles.first.id,
+                            items: tipoInmuebles.map((tipo) {
+                              return DropdownMenuItem<int>(
+                                value: tipo.id,
+                                child: Text(tipo.nombre),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              setState(() {
+                                _tipoInmuebleId = value ?? tipoInmuebles.first.id;
+                              });
+                            },
+                            validator: (value) {
+                              if (value == null) {
+                                return 'Por favor seleccione un tipo de inmueble';
+                              }
+                              return null;
+                            },
+                          );
                         },
                       ),
                       const SizedBox(height: 16),

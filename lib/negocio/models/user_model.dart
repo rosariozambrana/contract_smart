@@ -10,7 +10,6 @@ class UserModel {
   String telefono;
   String? photoPath;
   String tipoUsuario;
-  String tipoCliente;
   String direccion;
   String? walletAddress;
   Timestamp? createdAt;
@@ -25,7 +24,6 @@ class UserModel {
     this.telefono = '',
     this.photoPath,
     this.tipoUsuario = 'cliente',
-    this.tipoCliente = 'particular',
     this.direccion = '',
     this.walletAddress,
     Timestamp? createdAt,
@@ -45,7 +43,6 @@ class UserModel {
       telefono: doc['telefono'] ?? '',
       photoPath: doc['photoPath'],
       tipoUsuario: doc['tipo_usuario'] ?? 'cliente',
-      tipoCliente: doc['tipo_cliente'] ?? 'particular',
       direccion: doc['direccion'] ?? '',
       createdAt: doc['created_at'] is Timestamp ? doc['created_at'] : null,
       updatedAt: doc['updated_at'] is Timestamp ? doc['updated_at'] : null,
@@ -64,7 +61,6 @@ class UserModel {
       'telefono': telefono,
       'photoPath': photoPath,
       'tipo_usuario': tipoUsuario,
-      'tipo_cliente': tipoCliente,
       'direccion': direccion
     };
   }

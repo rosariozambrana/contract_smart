@@ -69,7 +69,6 @@ class BlockchainProvider extends ChangeNotifier {
             direccion: currentUser.direccion,
             walletAddress: walletAddress,
             tipoUsuario: currentUser.tipoUsuario,
-            tipoCliente: currentUser.tipoCliente,
             photoPath: currentUser.photoPath,
             createdAt: currentUser.createdAt,
             updatedAt: currentUser.updatedAt,

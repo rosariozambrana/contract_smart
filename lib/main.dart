@@ -15,6 +15,7 @@ import 'presentacion/screens/auth/edit_profile_screen.dart';
 import 'presentacion/screens/home_cliente/home_cliente_screen.dart';
 import 'presentacion/screens/home_propietario/home_propietario_screen.dart';
 import 'presentacion/screens/inmueble/inmueble_screen.dart';
+import 'presentacion/screens/visitante/home_visitante_screen.dart';
 import 'presentacion/screens/admin/websocket_admin_screen.dart';
 import 'presentacion/screens/notifications/notification_center_screen.dart';
 
@@ -46,7 +47,7 @@ void main() async {
   socketService.setUrlConfigProvider(urlConfigProvider);
 
   // Initialize socket service after UrlConfigProvider is created
-  
+
   //socketService.initialize();
 
   // Initialize websocket admin service
@@ -153,10 +154,11 @@ class _MyAppState extends State<MyApp> {
         ),
         initialRoute: '/',
         routes: {
-          '/': (context) => const InmuebleScreen(),
+          '/': (context) => const LoginScreen(),
           '/login': (context) => LoginScreen(),
           '/register': (context) => RegisterScreen(),
           '/home': (context) => const InmuebleScreen(),
+          '/homeVisitante': (context) => const HomeVisitanteScreen(),
           '/homePropietario': (context) => HomePropietarioScreen(),
           '/homeCliente': (context) => HomeClienteScreen(),
           '/editProfile': (context) => EditProfileScreen(),

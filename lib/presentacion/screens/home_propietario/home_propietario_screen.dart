@@ -40,6 +40,21 @@ class _HomePropietarioScreenState extends State<HomePropietarioScreen> with Sing
     setState(() {
       _isLoading = true;
     });
+
+    print('🧹 LIMPIANDO PROVIDERS ANTES DE LOGOUT');
+
+    // Limpiar InmuebleProvider completamente (sin keepUser)
+    await context.read<InmuebleProvider>().clear(keepUser: false);
+    print('   - InmuebleProvider limpiado');
+
+    // Limpiar ContratoProvider si existe
+    try {
+      await context.read<ContratoProvider>().clear();
+      print('   - ContratoProvider limpiado');
+    } catch (e) {
+      print('   - ContratoProvider no disponible o error: $e');
+    }
+
     bool result = await context.read<AuthenticatedProvider>().logout();
     if (!result) {
       setState(() {
@@ -98,10 +113,13 @@ class _HomePropietarioScreenState extends State<HomePropietarioScreen> with Sing
             ],
           ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'homePropietarioFAB', // Tag único para evitar conflictos
         onPressed: () {
           // Action depends on current tab
           switch (_tabController.index) {
             case 0: // Inmuebles
+              // Limpiar datos pero mantener el usuario cargado
+              context.read<InmuebleProvider>().clear(keepUser: true);
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -125,111 +143,8 @@ class _HomePropietarioScreenState extends State<HomePropietarioScreen> with Sing
   }
 
   Widget _buildInmueblesTab(BuildContext context, dynamic user) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Welcome section
-          Card(
-            elevation: 4,
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Bienvenido, ${user?.name ?? "Propietario"}',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Gestiona tus inmuebles ofertados, contratos y pagos.',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          // Profile section
-          Text(
-            'Mi Perfil',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 16),
-
-          Card(
-            elevation: 4,
-            child: Column(
-              children: [
-                ListTile(
-                  title: const Text('Editar Perfil'),
-                  subtitle: const Text('Actualiza tu información personal'),
-                  leading: const Icon(Icons.person, color: Colors.orange),
-                  trailing: const Icon(Icons.arrow_forward_ios),
-                  onTap: () {
-                    // Navigate to edit profile screen
-                    Navigator.pushNamed(context, '/editProfile');
-                  },
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          Text(
-            'Mis Inmuebles',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 16),
-
-          // Placeholder for inmuebles list
-          Card(
-            elevation: 4,
-            child: Column(
-              children: [
-                ListTile(
-                  title: const Text('Inmuebles Publicados'),
-                  subtitle: const Text('Gestiona tus inmuebles en oferta'),
-                  leading: const Icon(Icons.apartment, color: Colors.blue),
-                  trailing: const Icon(Icons.arrow_forward_ios),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const MyInmueblesScreen(),
-                      ),
-                    );
-                  },
-                ),
-                const Divider(),
-                ListTile(
-                  title: const Text('Añadir Nuevo Inmueble'),
-                  subtitle: const Text('Publica un nuevo inmueble para alquiler'),
-                  leading: const Icon(Icons.add_home, color: Colors.green),
-                  trailing: const Icon(Icons.arrow_forward_ios),
-                  onTap: () {
-                    context.read<InmuebleProvider>().clear();
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const DetalleInmueblesScreen(
-                          isEditing: false,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+    // Mostrar directamente la lista de inmuebles del propietario
+    return const MyInmueblesScreen();
   }
 
   Widget _buildContratosTab(BuildContext context, dynamic user) {

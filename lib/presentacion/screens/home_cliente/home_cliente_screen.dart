@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/authenticated_provider.dart';
+import '../../providers/inmueble_provider.dart';
+import '../../providers/contrato_provider.dart';
 import '../../widgets/notification_badge.dart';
 import 'pagos/pagos_pendientes_screen.dart';
 import 'pagos/historial_pagos_screen.dart';
@@ -24,6 +26,25 @@ class _HomeClienteScreenState extends State<HomeClienteScreen> {
     setState(() {
       _isLoading = true;
     });
+
+    print('🧹 LIMPIANDO PROVIDERS ANTES DE LOGOUT (CLIENTE)');
+
+    // Limpiar InmuebleProvider completamente (sin keepUser)
+    try {
+      await context.read<InmuebleProvider>().clear(keepUser: false);
+      print('   - InmuebleProvider limpiado');
+    } catch (e) {
+      print('   - InmuebleProvider no disponible o error: $e');
+    }
+
+    // Limpiar ContratoProvider si existe
+    try {
+      await context.read<ContratoProvider>().clear();
+      print('   - ContratoProvider limpiado');
+    } catch (e) {
+      print('   - ContratoProvider no disponible o error: $e');
+    }
+
     bool result = await context.read<AuthenticatedProvider>().logout();
     if (!result) {
       setState(() {

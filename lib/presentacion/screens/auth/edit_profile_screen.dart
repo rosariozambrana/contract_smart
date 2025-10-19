@@ -252,7 +252,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                   ? null
                                   : _walletAddressController.text,
                               tipoUsuario: currentUser.tipoUsuario,
-                              tipoCliente: currentUser.tipoCliente,
                               photoPath: currentUser.photoPath,
                               createdAt: currentUser.createdAt,
                               updatedAt: currentUser.updatedAt,

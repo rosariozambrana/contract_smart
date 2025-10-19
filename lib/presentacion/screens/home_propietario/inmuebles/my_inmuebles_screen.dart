@@ -20,114 +20,87 @@ class _MyInmueblesScreenState extends State<MyInmueblesScreen> {
   @override
   void initState() {
     super.initState();
-    // Load properties belonging to the current user
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<InmuebleProvider>().loadInmueblesByPropietarioId();
+    // Initialize provider and load properties belonging to the current user
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final provider = context.read<InmuebleProvider>();
+
+      // CRÍTICO: SIEMPRE llamar a initialize() para recargar el usuario actual
+      // Esto es necesario cuando diferentes usuarios inician sesión
+      await provider.initialize();
+
+      // Load properties for current user
+      await provider.loadInmueblesByPropietarioId();
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Mis Inmuebles'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              context.read<InmuebleProvider>().loadInmueblesByPropietarioId();
+    // No usar Scaffold aquí porque ya está dentro del Scaffold de home_propietario_screen
+    // Esto evita conflictos con FloatingActionButton y AppBar
+    return Consumer<InmuebleProvider>(
+      builder: (context, provider, child) {
+        if (provider.isLoading) {
+          return Loading(title: 'Cargando inmuebles...');
+        }
+
+        if (provider.message != null && provider.myInmuebles.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  provider.message!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 16),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () {
+                    provider.loadInmueblesByPropietarioId();
+                  },
+                  child: const Text('Reintentar'),
+                ),
+              ],
+            ),
+          );
+        }
+
+        if (provider.myInmuebles.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text(
+                  'No tienes inmuebles registrados',
+                  style: TextStyle(fontSize: 18),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () {
+                    provider.loadInmueblesByPropietarioId();
+                  },
+                  child: const Text('Recargar Inmuebles'),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Usa el botón + para crear tu primer inmueble',
+                  style: TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+              ],
+            ),
+          );
+        }
+        return RefreshIndicator(
+          onRefresh: () => provider.loadInmueblesByPropietarioId(),
+          child: ListView.builder(
+            itemCount: provider.myInmuebles.length,
+            itemBuilder: (context, index) {
+              final inmueble = provider.myInmuebles[index];
+              return _buildInmuebleCard(context, inmueble, provider);
             },
-            tooltip: 'Actualizar',
           ),
-        ],
-      ),
-      body: Consumer<InmuebleProvider>(
-        builder: (context, provider, child) {
-          if (provider.isLoading) {
-            return Loading(title: 'Cargando inmuebles...');
-          }
-
-          if (provider.message != null && provider.myInmuebles.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    provider.message!,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () {
-                      provider.loadInmueblesByPropietarioId();
-                    },
-                    child: const Text('Reintentar'),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          if (provider.myInmuebles.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text(
-                    'No tienes inmuebles registrados',
-                    style: TextStyle(fontSize: 18),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () {
-                      provider.loadInmueblesByPropietarioId();
-                    },
-                    child: const Text('Recargar Inmuebles'),
-                  ),
-                  const SizedBox(height: 8),
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder:
-                              (context) =>
-                                  DetalleInmueblesScreen(isEditing: false),
-                        ),
-                      );
-                    },
-                    child: const Text('Crear Inmueble'),
-                  ),
-                ],
-              ),
-            );
-          }
-          return RefreshIndicator(
-            onRefresh: () => provider.loadInmueblesByPropietarioId(),
-            child: ListView.builder(
-              itemCount: provider.myInmuebles.length,
-              itemBuilder: (context, index) {
-                final inmueble = provider.myInmuebles[index];
-                return _buildInmuebleCard(context, inmueble, provider);
-              },
-            ),
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          context.read<InmuebleProvider>().clear();
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => DetalleInmueblesScreen(isEditing: false),
-            ),
-          );
-        },
-        child: Icon(Icons.add),
-        tooltip: 'Añadir Inmueble',
-      ),
+        );
+      },
     );
   }
 

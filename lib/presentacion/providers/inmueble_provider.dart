@@ -8,10 +8,12 @@ import '../../negocio/models/tipo_inmueble_model.dart';
 import '../../negocio/models/servicio_basico_model.dart';
 import '../../negocio/AuthenticatedNegocio.dart';
 import '../screens/components/message_widget.dart';
+import 'user_global_provider.dart';
 
 class InmuebleProvider extends ChangeNotifier {
   final InmuebleNegocio _inmuebleNegocio = InmuebleNegocio();
   final AuthenticatedNegocio _authenticatedNegocio = AuthenticatedNegocio();
+  final UserGlobalProvider _userGlobalProvider = UserGlobalProvider();
   late ResponseModel _responseModel;
   List<InmuebleModel> _inmuebles = [];
   List<InmuebleModel> _myInmuebles = [];
@@ -33,22 +35,32 @@ class InmuebleProvider extends ChangeNotifier {
   /// Inicializa el provider cargando todos los datos necesarios
   /// Este método debe llamarse explícitamente después de crear el provider
   Future<void> initialize() async {
-    if (_isInitialized) return; // Evitar inicialización múltiple
-
     try {
       isLoading = true;
 
-      // Ejecutar las cargas iniciales en paralelo para mayor eficiencia
-      await Future.wait([
-        _loadCurrentUser(),
-        _loadInmueblesInternal(),
-        _loadServiciosBasicosInternal(),
-      ]);
+      print('🔄 INITIALIZE llamado - _isInitialized: $_isInitialized');
 
-      _isInitialized = true;
+      // CRÍTICO: Siempre recargar el usuario actual para evitar cache de usuario anterior
+      // Esto es necesario cuando diferentes usuarios inician sesión en la misma sesión de la app
+      await _loadCurrentUser();
+      print('   - Usuario actual después de _loadCurrentUser: ${currentUser?.email} (ID: ${currentUser?.id})');
+
+      // Solo cargar el resto de datos si no está inicializado
+      if (!_isInitialized) {
+        print('   - Primera inicialización, cargando inmuebles y servicios...');
+        await Future.wait([
+          _loadInmueblesInternal(),
+          _loadServiciosBasicosInternal(),
+        ]);
+        _isInitialized = true;
+      } else {
+        print('   - Ya inicializado, solo se recargó el usuario');
+      }
+
     } catch (e) {
       messageType = MessageType.error;
       message = 'Error al inicializar: $e';
+      print('❌ Error en initialize(): $e');
     } finally {
       isLoading = false;
     }
@@ -76,15 +88,50 @@ class InmuebleProvider extends ChangeNotifier {
 
   Future<void> _loadCurrentUser() async {
     try {
-      currentUser = await _authenticatedNegocio.getUserSession();
-      if (currentUser == null) {
-        messageType = MessageType.info;
-        message = 'Usuario no encontrado, se ha creado un usuario temporal';
+      print('📥 _loadCurrentUser() - Iniciando carga de usuario...');
+      final previousUserId = currentUser?.id;
+      final previousUserEmail = currentUser?.email;
+
+      // PRIORIDAD 1: Intentar obtener del UserGlobalProvider (más rápido y confiable)
+      currentUser = _userGlobalProvider.currentUser;
+
+      if (currentUser != null) {
+        print('✅ Usuario obtenido de UserGlobalProvider:');
+        print('   - Email: ${currentUser!.email}');
+        print('   - ID: ${currentUser!.id}');
+        print('   - Tipo: ${currentUser!.tipoUsuario}');
       } else {
+        // PRIORIDAD 2: Si no está en UserGlobalProvider, intentar obtener de la sesión
+        print('⚠️ Usuario no encontrado en UserGlobalProvider, consultando sesión...');
+        currentUser = await _authenticatedNegocio.getUserSession();
+
+        if (currentUser != null) {
+          print('✅ Usuario obtenido de sesión:');
+          print('   - Email: ${currentUser!.email}');
+          print('   - ID: ${currentUser!.id}');
+          print('   - Tipo: ${currentUser!.tipoUsuario}');
+
+          // Actualizar el UserGlobalProvider con el usuario de la sesión
+          _userGlobalProvider.updateUser(currentUser);
+        } else {
+          print('⚠️ Usuario no encontrado en sesión');
+          messageType = MessageType.info;
+          message = 'Usuario no encontrado';
+        }
+      }
+
+      if (currentUser != null) {
+        if (previousUserId != null && previousUserId != currentUser!.id) {
+          print('🔄 CAMBIO DE USUARIO DETECTADO:');
+          print('   - Usuario anterior: $previousUserEmail (ID: $previousUserId)');
+          print('   - Nuevo usuario: ${currentUser!.email} (ID: ${currentUser!.id})');
+        }
+
         messageType = MessageType.success;
         message = 'Usuario actual cargado exitosamente';
       }
     } catch (e) {
+      print('❌ Error al cargar el usuario actual: $e');
       messageType = MessageType.error;
       message = 'Error al cargar el usuario actual: $e';
       rethrow; // Re-lanzar para que initialize() pueda capturarlo
@@ -150,27 +197,43 @@ class InmuebleProvider extends ChangeNotifier {
 }
 
   Future<void> loadInmueblesByPropietarioId() async {
-    print('Cargando inmuebles por propietario ID');
+    print('🏠 loadInmueblesByPropietarioId() - Iniciando carga...');
+
     if (currentUser == null) {
+      print('❌ ERROR: currentUser es NULL');
       message = 'No se pudo cargar el usuario actual';
       isLoading = false;
       messageType = MessageType.error;
       return;
     }
-    print('Usuario actual cargado: ${currentUser?.id}');
+
+    print('✅ Usuario actual verificado:');
+    print('   - Email: ${currentUser!.email}');
+    print('   - ID: ${currentUser!.id}');
+    print('   - Solicitando inmuebles para propietario ID: ${currentUser!.id}');
+
     try {
       isLoading = true;
       _responseModel = await _inmuebleNegocio.getInmueblesByPropietarioId(currentUser!.id);
-      print('Respuesta del negocio: ${_responseModel.isSuccess}, Data: ${_responseModel.data}');
+      print('📦 Respuesta del backend:');
+      print('   - Success: ${_responseModel.isSuccess}');
+      print('   - Data: ${_responseModel.data != null ? "✅ Datos recibidos" : "❌ Sin datos"}');
+
       if (_responseModel.isSuccess && _responseModel.data != null) {
         myInmuebles = InmuebleModel.fromList(_responseModel.data);
+        print('✅ Inmuebles cargados: ${myInmuebles.length} inmuebles para el propietario ${currentUser!.email}');
+        if (myInmuebles.isNotEmpty) {
+          print('   - Primer inmueble: ${myInmuebles.first.nombre} (user_id: ${myInmuebles.first.userId})');
+        }
         message = _responseModel.message ?? 'Inmuebles cargados exitosamente';
         messageType = MessageType.success;
       } else {
+        print('⚠️ No se encontraron inmuebles para este propietario');
         messageType = MessageType.info;
         message = _responseModel.messageError ?? 'No se encontraron inmuebles para este propietario';
       }
     } catch (e) {
+      print('❌ Error al cargar los inmuebles del propietario: $e');
       messageType = MessageType.error;
       message = 'Error al cargar los inmuebles del propietario: $e';
     } finally {
@@ -238,13 +301,24 @@ class InmuebleProvider extends ChangeNotifier {
   Future<bool> createInmueble(InmuebleModel inmueble) async {
     try {
       isLoading = true;
+
+      // 🔍 DEBUG: Validación de usuario antes de crear inmueble
+      print('🔍 VALIDANDO USUARIO EN createInmueble():');
+      print('   - currentUser: ${currentUser != null ? "✅ EXISTE (ID: ${currentUser!.id}, Email: ${currentUser!.email})" : "❌ NULL"}');
+      print('   - inmueble.userId: ${inmueble.userId} ${inmueble.userId == 0 ? "⚠️ CERO!" : "✅"}');
+      print('   - _isInitialized: $_isInitialized');
+
       if (currentUser == null || inmueble.userId == 0) {
         messageType = MessageType.error;
         message = 'No se pudo cargar el usuario actual';
         isLoading = false;
-        print('Error: No se pudo cargar el usuario actual');
+        print('❌ ERROR CRÍTICO: No se pudo cargar el usuario actual');
+        print('   - currentUser es null: ${currentUser == null}');
+        print('   - userId es 0: ${inmueble.userId == 0}');
         return false;
       }
+
+      print('✅ Usuario validado correctamente, procediendo a crear inmueble...');
       _responseModel = await _inmuebleNegocio.createInmueble(inmueble);
       print('Respuesta del negocio al crear inmueble: ${_responseModel.isSuccess}, Data: ${_responseModel.data}');
       if (_responseModel.isSuccess && _responseModel.data != null) {
@@ -399,7 +473,7 @@ class InmuebleProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> clear() async {
+  Future<void> clear({bool keepUser = false}) async {
     _inmuebles.clear();
     _myInmuebles.clear();
     _galeriaInmueble.clear();
@@ -408,6 +482,14 @@ class InmuebleProvider extends ChangeNotifier {
     _selectedInmueble = null;
     _message = null;
     _isLoading = false;
+
+    // Opcionalmente mantener el usuario y estado de inicialización
+    // para evitar recargas innecesarias entre navegaciones
+    if (!keepUser) {
+      _currentUser = null;
+      _isInitialized = false;
+    }
+
     notifyListeners();
   }
 
