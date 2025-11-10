@@ -66,11 +66,16 @@ class SolicitudAlquilerModel {
               : HandlerDateTime.getDateTimeNow(),
     );
 
+    // Parse inmueble relationship (backend always sends 'inmueble' singular - belongsTo)
     if (map['inmueble'] != null) {
       model.inmueble = InmuebleModel.mapToModel(map['inmueble']);
     }
 
-    if (map['cliente'] != null) {
+    // Parse user/cliente relationship (backend sends 'user')
+    if (map['user'] != null) {
+      model.cliente = UserModel.mapToModel(map['user']);
+    } else if (map['cliente'] != null) {
+      // Fallback for 'cliente' form
       model.cliente = UserModel.mapToModel(map['cliente']);
     }
 

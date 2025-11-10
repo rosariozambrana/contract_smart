@@ -7,6 +7,7 @@ import '../../providers/inmueble_provider.dart';
 import '../../providers/solicitud_alquiler_provider.dart';
 import '../../../datos/ApiService.dart';
 import 'package:provider/provider.dart';
+import '../../../core/constants/crypto_constants.dart';
 
 class SolicitudAlquilerScreen extends StatefulWidget {
   final InmuebleModel inmueble;
@@ -25,6 +26,7 @@ class _SolicitudAlquilerScreenState extends State<SolicitudAlquilerScreen> {
 
   List<ServicioBasicoModel> _serviciosBasicos = [];
   List<GaleriaInmuebleModel> _galeriaInmueble = [];
+  bool _isSubmitting = false; // Protección contra múltiples clics
 
   // Helper method to check if a service is included in the property
   bool _isServiceInProperty(ServicioBasicoModel service) {
@@ -93,6 +95,12 @@ class _SolicitudAlquilerScreenState extends State<SolicitudAlquilerScreen> {
   }
 
   Future<void> _submitRequest() async {
+    // Protección contra múltiples clics
+    if (_isSubmitting) {
+      print('⚠️ Solicitud ya en proceso, ignorando clic adicional');
+      return;
+    }
+
     if (_formKey.currentState!.validate()) {
       if (context.read<SolicitudAlquilerProvider>().currentUser == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -117,6 +125,12 @@ class _SolicitudAlquilerScreenState extends State<SolicitudAlquilerScreen> {
         );
         return;
       }
+
+      // Activar protección
+      setState(() {
+        _isSubmitting = true;
+      });
+
       try {
         // Create solicitud model
         final solicitud = SolicitudAlquilerModel(
@@ -165,6 +179,13 @@ class _SolicitudAlquilerScreenState extends State<SolicitudAlquilerScreen> {
             ),
           );
         }
+      } finally {
+        // Desactivar protección al finalizar
+        if (mounted) {
+          setState(() {
+            _isSubmitting = false;
+          });
+        }
       }
     }
   }
@@ -174,7 +195,7 @@ class _SolicitudAlquilerScreenState extends State<SolicitudAlquilerScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Solicitar Alquiler de Inmueble')),
       body:
-          context.watch<SolicitudAlquilerProvider>().isLoading
+          context.select<SolicitudAlquilerProvider, bool>((provider) => provider.isLoading)
               ? const Center(child: CircularProgressIndicator())
               : SingleChildScrollView(
                 padding: const EdgeInsets.all(16.0),
@@ -215,14 +236,27 @@ class _SolicitudAlquilerScreenState extends State<SolicitudAlquilerScreen> {
                                 ],
                               ),
                               const SizedBox(height: 8),
-                              Text(
-                                'Precio: \$${widget.inmueble.precio.toStringAsFixed(2)}',
-                                style: Theme.of(
-                                  context,
-                                ).textTheme.titleMedium?.copyWith(
-                                  color: Theme.of(context).colorScheme.primary,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Precio: ${widget.inmueble.precio.toStringAsFixed(2)} ETH/mes',
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.titleMedium?.copyWith(
+                                      color: Theme.of(context).colorScheme.primary,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '≈ ${CryptoConstants.formatUsdFromEth(widget.inmueble.precio)}/mes',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -367,16 +401,36 @@ class _SolicitudAlquilerScreenState extends State<SolicitudAlquilerScreen> {
                         width: double.infinity,
                         height: 50,
                         child: ElevatedButton(
-                          onPressed: _submitRequest,
+                          onPressed: _isSubmitting ? null : _submitRequest,
                           style: ElevatedButton.styleFrom(
                             backgroundColor:
                                 Theme.of(context).colorScheme.primary,
                             foregroundColor: Colors.white,
+                            disabledBackgroundColor: Colors.grey,
                           ),
-                          child: const Text(
-                            'Enviar Solicitud',
-                            style: TextStyle(fontSize: 16),
-                          ),
+                          child: _isSubmitting
+                              ? const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                      ),
+                                    ),
+                                    SizedBox(width: 12),
+                                    Text(
+                                      'Enviando...',
+                                      style: TextStyle(fontSize: 16),
+                                    ),
+                                  ],
+                                )
+                              : const Text(
+                                  'Enviar Solicitud',
+                                  style: TextStyle(fontSize: 16),
+                                ),
                         ),
                       ),
                     ],

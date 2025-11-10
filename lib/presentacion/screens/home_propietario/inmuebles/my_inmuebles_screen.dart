@@ -8,6 +8,7 @@ import '../../../../negocio/models/inmueble_model.dart';
 import '../../components/Loading.dart';
 import '../../components/image_profile_inmueble.dart';
 import 'detalle_inmuebles.dart';
+import '../../../../core/constants/crypto_constants.dart';
 
 class MyInmueblesScreen extends StatefulWidget {
   const MyInmueblesScreen({Key? key}) : super(key: key);
@@ -141,6 +142,7 @@ class _MyInmueblesScreenState extends State<MyInmueblesScreen> {
                       imageUrl: "",
                       isIcon: false,
                       inmuebleId: inmueble.id,
+                      galeriaInmueble: inmueble.galeria, // ✅ Usar galería del backend
                     ),
           ),
           Padding(
@@ -177,16 +179,34 @@ class _MyInmueblesScreenState extends State<MyInmueblesScreen> {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    const Icon(CupertinoIcons.money_dollar_circle, size: 16),
-                    const SizedBox(width: 4),
-                    Text(
-                      '\Bs${inmueble.precio.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(CupertinoIcons.money_dollar_circle, size: 16),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${inmueble.precio.toStringAsFixed(2)} ETH/mes',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '≈ ${CryptoConstants.formatUsdFromEth(inmueble.precio)}/mes',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const Spacer(),
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,

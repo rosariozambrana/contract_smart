@@ -21,7 +21,7 @@ class _BlockchainControlScreenState extends State<BlockchainControlScreen>
   late TabController _tabController;
   bool _isLoading = false;
   String? _errorMessage;
-  bool _isBlockchainInitialized = false;
+  bool _isBlockchainInitialized = true; // HTTP-based, always available
   List<ContratoModel> _contratos = [];
   List<PagoModel> _pagos = [];
   Map<int, Map<String, dynamic>?> _blockchainContractDetails = {};
@@ -51,17 +51,17 @@ class _BlockchainControlScreenState extends State<BlockchainControlScreen>
     try {
       final blockchainProvider = context.read<BlockchainProvider>();
 
-      // The blockchain will be automatically initialized when needed
-      await blockchainProvider.ensureInitialized();
+      // Blockchain via HTTP, check backend connection
+      final isConnected = await blockchainProvider.checkGanacheConnection();
 
       setState(() {
-        _isBlockchainInitialized = blockchainProvider.isInitialized;
+        _isBlockchainInitialized = isConnected;
       });
     } catch (e) {
       setState(() {
-        _errorMessage = 'Error al inicializar blockchain: $e';
+        _errorMessage = 'Error al verificar conexión blockchain: $e';
       });
-      print('Error initializing blockchain: $_errorMessage');
+      print('Error checking blockchain: $_errorMessage');
     } finally {
       setState(() {
         _isLoading = false;
@@ -191,10 +191,10 @@ class _BlockchainControlScreenState extends State<BlockchainControlScreen>
                   const SizedBox(height: 16),
                   _buildStatusRow(
                     'Servicio Blockchain',
-                    blockchainProvider.isInitialized
-                        ? 'Conectado'
-                        : 'Desconectado',
-                    blockchainProvider.isInitialized
+                    _isBlockchainInitialized
+                        ? 'Backend conectado'
+                        : 'Backend desconectado',
+                    _isBlockchainInitialized
                         ? Colors.green
                         : Colors.red,
                   ),
@@ -218,12 +218,11 @@ class _BlockchainControlScreenState extends State<BlockchainControlScreen>
                     dotenv.env['BLOCKCHAIN_CHAIN_ID_LOCAL'] ?? 'No disponible',
                     Colors.blue,
                   ),
-                  if (blockchainProvider.contractAddress != null)
-                    _buildStatusRow(
-                      'Dirección del Contrato',
-                      blockchainProvider.contractAddress!,
-                      Colors.blue,
-                    ),
+                  _buildStatusRow(
+                    'Dirección del Contrato',
+                    dotenv.env['BLOCKCHAIN_CONTRACT_ADDRESS_LOCAL'] ?? 'No configurado',
+                    Colors.blue,
+                  ),
                 ],
               ),
             ),

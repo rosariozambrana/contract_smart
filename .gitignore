@@ -44,4 +44,13 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 *.env
-
+.claude
+.metadata
+BACKEND_COMPATIBILITY.md
+.fix_all_imports.py
+fix_imports.py
+GOOGLE_MAPS_INTEGRATION.md
+MIGRACION_REVERB_COMPLETADA.md
+PASOS_SIGUIENTES.md
+README.md
+WEBSOCKET_MIGRATION_COMPLETE.md

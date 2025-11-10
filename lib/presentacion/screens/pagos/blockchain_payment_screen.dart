@@ -7,6 +7,8 @@ import '../../providers/blockchain_provider.dart';
 import '../../../negocio/models/pago_model.dart';
 import '../../../negocio/models/contrato_model.dart';
 import '../components/Loading.dart';
+import '../../../core/constants/crypto_constants.dart';
+import '../../../datos/blockchain_api_service.dart';
 
 class BlockchainPaymentScreen extends StatefulWidget {
   final int contratoId;
@@ -28,7 +30,12 @@ class _BlockchainPaymentScreenState extends State<BlockchainPaymentScreen> {
   bool _isLoading = true;
   ContratoModel? _contrato;
   String? _errorMessage;
-  bool _isBlockchainInitialized = false;
+  bool _isBlockchainInitialized = true; // HTTP-based, no initialization needed
+  bool _esPrimerPago = false;
+  // Datos del cálculo de pago desde backend
+  double _montoTotal = 0.0;
+  bool _requiereDeposito = false;
+  String _descripcionPago = '';
 
   @override
   void initState() {
@@ -64,11 +71,27 @@ class _BlockchainPaymentScreenState extends State<BlockchainPaymentScreen> {
         return;
       }
 
-      // Set default amount from contract
-      _montoController.text = _contrato!.monto.toString();
+      // ✅ NUEVO: Llamar al backend para calcular el monto
+      final blockchainService = BlockchainApiService();
+      final response = await blockchainService.calcularMontoPago(widget.contratoId);
 
-      // Check if blockchain is initialized
-      _isBlockchainInitialized = context.read<BlockchainProvider>().isInitialized;
+      if (response.isSuccess && response.data != null) {
+        // Guardar datos del cálculo
+        _montoTotal = (response.data['monto_total'] as num).toDouble();
+        _requiereDeposito = response.data['requiere_deposito'] as bool;
+        _descripcionPago = response.data['descripcion'] as String;
+        _esPrimerPago = _requiereDeposito;
+
+        // Mostrar monto calculado por el backend
+        _montoController.text = _montoTotal.toString();
+
+        debugPrint('✅ Monto calculado desde backend: $_montoTotal ETH');
+        debugPrint('   Requiere depósito: $_requiereDeposito');
+      } else {
+        setState(() {
+          _errorMessage = 'Error al calcular monto: ${response.messageError}';
+        });
+      }
 
     } catch (e) {
       setState(() {
@@ -89,13 +112,24 @@ class _BlockchainPaymentScreenState extends State<BlockchainPaymentScreen> {
   // ✅ VERIFICAR mounted al inicio
   if (!mounted) return;
 
+  // Mostrar confirmación antes de realizar el pago
+  print('🔥 VALOR EN CAMPO: ${_montoController.text}');
+  print('🔥 ES PRIMER PAGO: $_esPrimerPago');
+  print('🔥 MONTO CONTRATO: ${_contrato?.monto}');
+  final monto = double.parse(_montoController.text);
+  print('🔥 MONTO PARSEADO: $monto');
+  final confirmar = await
+
+
+  _mostrarDialogConfirmacion(monto);
+
+  if (confirmar != true) return;
+
   setState(() {
     _isLoading = true;
   });
 
   try {
-    final monto = double.parse(_montoController.text);
-
     // Create payment model
     final pago = PagoModel(
       contratoId: widget.contratoId,
@@ -104,6 +138,8 @@ class _BlockchainPaymentScreenState extends State<BlockchainPaymentScreen> {
       descripcion: _descripcionController.text,
       estado: 'pendiente',
     );
+
+    print('🔥 ENVIANDO PAGO: monto=${pago.monto}, contratoId=${pago.contratoId}');
 
     // Process payment through blockchain
     final success = await context.read<PagoProvider>().createPagoBlockchain(pago);
@@ -129,7 +165,7 @@ class _BlockchainPaymentScreenState extends State<BlockchainPaymentScreen> {
   } catch (e) {
     // ✅ VERIFICAR mounted antes de setState
     if (!mounted) return;
-    
+
     setState(() {
       _errorMessage = 'Error al procesar el pago: $e';
     });
@@ -142,6 +178,92 @@ class _BlockchainPaymentScreenState extends State<BlockchainPaymentScreen> {
     }
   }
 }
+
+  /// Muestra dialog de confirmación con desglose del pago
+  Future<bool?> _mostrarDialogConfirmacion(double monto) async {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirmar Pago'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_esPrimerPago) ...[
+              const Text(
+                'Este es tu PRIMER PAGO que incluye:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text('• Depósito (50%): ${CryptoConstants.formatEth(_contrato!.monto * 0.5)}'),
+              Text('• Primer mes: ${CryptoConstants.formatEth(_contrato!.monto)}'),
+              const Divider(),
+              const SizedBox(height: 4),
+              Text(
+                'ℹ️ El depósito se devolverá al finalizar el contrato si no hay daños',
+                style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.grey[600]),
+              ),
+              const SizedBox(height: 8),
+            ] else ...[
+              const Text('Pago mensual de renta'),
+              const SizedBox(height: 8),
+            ],
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Monto total: ${CryptoConstants.formatEth(monto)}',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  '≈ ${CryptoConstants.formatUsdFromEth(monto)}',
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.warning_amber, color: Colors.orange[700]),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Esta operación en blockchain NO puede revertirse',
+                      style: TextStyle(
+                        color: Colors.orange[700],
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Confirmar Pago'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -258,7 +380,7 @@ class _BlockchainPaymentScreenState extends State<BlockchainPaymentScreen> {
                                 ),
                                 _buildInfoRow(
                                   'Monto Mensual',
-                                  '\$${_contrato?.monto.toStringAsFixed(2) ?? '0.00'}',
+                                  '${CryptoConstants.formatEth(_contrato?.monto ?? 0.0)} (≈ ${CryptoConstants.formatUsdFromEth(_contrato?.monto ?? 0.0)})',
                                   Colors.black,
                                 ),
                                 _buildInfoRow(
@@ -272,6 +394,54 @@ class _BlockchainPaymentScreenState extends State<BlockchainPaymentScreen> {
                         ),
 
                         const SizedBox(height: 24),
+
+                        // Desglose del primer pago
+                        if (_esPrimerPago) ...[
+                          Card(
+                            color: Colors.blue.shade50,
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(Icons.info_outline, color: Colors.blue[700]),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Primer Pago',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                          color: Colors.blue[700],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const Divider(),
+                                  _buildDetalleRow('Depósito (50%):', '${CryptoConstants.formatEth(_contrato!.monto * 0.5)} (≈ ${CryptoConstants.formatUsdFromEth(_contrato!.monto * 0.5)})'),
+                                  _buildDetalleRow('Primer mes de renta:', '${CryptoConstants.formatEth(_contrato!.monto)} (≈ ${CryptoConstants.formatUsdFromEth(_contrato!.monto)})'),
+                                  const Divider(),
+                                  _buildDetalleRow(
+                                    'TOTAL A PAGAR:',
+                                    '${CryptoConstants.formatEth(_montoTotal)} (≈ ${CryptoConstants.formatUsdFromEth(_montoTotal)})',
+                                    bold: true,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'ℹ️ El depósito se devolverá al finalizar el contrato si no hay daños',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontStyle: FontStyle.italic,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                        ],
 
                         // Payment form
                         Card(
@@ -287,10 +457,16 @@ class _BlockchainPaymentScreenState extends State<BlockchainPaymentScreen> {
                                 const SizedBox(height: 16),
                                 TextFormField(
                                   controller: _montoController,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Monto',
-                                    prefixText: '\$',
-                                    border: OutlineInputBorder(),
+                                  enabled: !_esPrimerPago, // Deshabilitar edición en primer pago
+                                  decoration: InputDecoration(
+                                    labelText: _esPrimerPago
+                                        ? 'Monto (calculado automáticamente)'
+                                        : 'Monto (ETH)',
+                                    suffixText: 'ETH',
+                                    border: const OutlineInputBorder(),
+                                    helperText: _esPrimerPago
+                                        ? 'El monto del primer pago incluye depósito + renta'
+                                        : 'Ingrese el monto en ETH',
                                   ),
                                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                   validator: (value) {
@@ -351,7 +527,7 @@ class _BlockchainPaymentScreenState extends State<BlockchainPaymentScreen> {
           Flexible(
             flex: 2,
             child: Text(
-              label, 
+              label,
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
@@ -362,6 +538,32 @@ class _BlockchainPaymentScreenState extends State<BlockchainPaymentScreen> {
               value,
               style: TextStyle(color: valueColor, fontWeight: FontWeight.bold),
               textAlign: TextAlign.right,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetalleRow(String label, String value, {bool bold = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+              fontSize: bold ? 14 : 13,
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+              fontSize: bold ? 14 : 13,
+              color: bold ? Colors.blue[700] : Colors.black,
             ),
           ),
         ],

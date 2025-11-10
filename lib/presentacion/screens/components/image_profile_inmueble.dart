@@ -80,10 +80,30 @@ class _ImageProfileInmuebleState extends State<ImageProfileInmueble> {
         child: CircularProgressIndicator(),
       );
     }
-    
-    // Si hemos proporcionado imágenes de galería, úselas
-    if (photoPath.isNotEmpty) {
-      
+
+    // ✅ PRIORIDAD 1: Usar galería pasada como parámetro (del backend)
+    if (widget.galeriaInmueble != null && widget.galeriaInmueble!.isNotEmpty) {
+      final firstImage = widget.galeriaInmueble!.first;
+      final String imagePath = '${ApiService.getInstance().baseUrlImage}/${firstImage.photoPath}';
+
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.network(
+          imagePath,
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+          errorBuilder: (context, error, stackTrace) {
+            return const Center(
+              child: Icon(Icons.home, size: 50),
+            );
+          },
+        ),
+      );
+    }
+    // PRIORIDAD 2: Si se cargó mediante HTTP
+    else if (photoPath.isNotEmpty) {
+
       final String imagePath = '${ApiService.getInstance().baseUrlImage}/$photoPath';
       print('Image path: $imagePath');
       return ClipRRect(
@@ -102,7 +122,7 @@ class _ImageProfileInmuebleState extends State<ImageProfileInmueble> {
         ),
       );
     }
-    // Si se proporciona imageUrl, úsela
+    // PRIORIDAD 3: Si se proporciona imageUrl, úsela
     else if (widget.imageUrl.isNotEmpty) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(8),

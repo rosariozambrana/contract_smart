@@ -8,7 +8,7 @@ class AppIconWidget extends StatelessWidget {
       radius: 40,
       backgroundColor: Colors.white,
       child: Image.asset(
-        'assets/icon/images.jpg', // Ruta del ícono en tu carpeta de assets
+        'assets/icon/images.png', // Ruta del ícono en tu carpeta de assets
         width: 100, // Ajusta el tamaño según lo necesites
         height: 100,
       ),

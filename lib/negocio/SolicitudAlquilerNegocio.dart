@@ -48,11 +48,25 @@ class SolicitudAlquilerNegocio {
 
   Future<ResponseModel> getSolicitudesByPropietarioId(int propietarioId) async {
     try {
+      print('🌐 ═══════════════════════════════════════════════════════');
+      print('🌐 NEGOCIO: getSolicitudesByPropietarioId');
+      print('   - Propietario ID: $propietarioId');
+      print('   - Endpoint: solicitudes-alquiler/propietario/$propietarioId');
+      print('   - Base URL: ${apiService.baseUrl}');
+      print('   - URL completa: ${apiService.baseUrl}solicitudes-alquiler/propietario/$propietarioId');
+
       ResponseModel response = await apiService.get('solicitudes-alquiler/propietario/$propietarioId');
-      print('Response from getSolicitudesByPropietarioId: ${response.toJson()}');
+
+      print('📥 Response from getSolicitudesByPropietarioId:');
+      print('   - isSuccess: ${response.isSuccess}');
+      print('   - statusCode: ${response.statusCode}');
+      print('   - data type: ${response.data.runtimeType}');
+      print('   - data: ${response.data}');
+      print('═══════════════════════════════════════════════════════');
+
       return response;
     } catch (e) {
-      print('Error fetching solicitudes by propietario id: $e');
+      print('❌ Error fetching solicitudes by propietario id: $e');
       return ResponseModel(
         isRequest: false,
         isSuccess: false,

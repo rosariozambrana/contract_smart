@@ -1,6 +1,7 @@
 import 'servicio_basico_model.dart';
 import 'tipo_inmueble_model.dart';
 import 'user_model.dart';
+import 'galeria_inmueble_model.dart';
 
 class InmuebleModel {
   final int id;
@@ -14,9 +15,15 @@ class InmuebleModel {
   final List<Map<String, dynamic>>? accesorios;
   final List<ServicioBasicoModel>? servicios_basicos;
   final int tipoInmuebleId;
+  final double? latitude;
+  final double? longitude;
+  final String? direccion;
+  final String? ciudad;
+  final String? pais;
 
   late TipoInmuebleModel? tipoInmueble;
   late UserModel? propietario;
+  late List<GaleriaInmuebleModel>? galeria;
 
   InmuebleModel({
     this.id = 0,
@@ -30,6 +37,11 @@ class InmuebleModel {
     this.accesorios,
     this.servicios_basicos,
     this.tipoInmuebleId = 0,
+    this.latitude,
+    this.longitude,
+    this.direccion,
+    this.ciudad,
+    this.pais,
   });
 
   factory InmuebleModel.mapToModel(Map<String, dynamic> doc) {
@@ -45,6 +57,11 @@ class InmuebleModel {
       accesorios: null,
       servicios_basicos: ServicioBasicoModel.fromJsonList(doc['servicios_basicos']),
       tipoInmuebleId: doc['tipo_inmueble_id'] ?? 0,
+      latitude: doc['latitude'] != null ? double.tryParse(doc['latitude'].toString()) : null,
+      longitude: doc['longitude'] != null ? double.tryParse(doc['longitude'].toString()) : null,
+      direccion: doc['direccion'],
+      ciudad: doc['ciudad'],
+      pais: doc['pais'],
     );
     if (doc['tipo_inmueble'] != null) {
       model.tipoInmueble = TipoInmuebleModel.fromJson(doc['tipo_inmueble']);
@@ -55,6 +72,11 @@ class InmuebleModel {
       model.propietario = UserModel.mapToModel(doc['propietario']);
     } else {
       model.propietario = null;
+    }
+    if (doc['galeria'] != null) {
+      model.galeria = GaleriaInmuebleModel.fromJsonList(doc['galeria']);
+    } else {
+      model.galeria = null;
     }
 
     return model;
@@ -72,6 +94,11 @@ class InmuebleModel {
       'accesorios': accesorios ?? null,
       'tipo_inmueble_id': tipoInmuebleId,
       'servicios_basicos': servicios_basicos?.map((servicio) => servicio.toJson()).toList(),
+      'latitude': latitude,
+      'longitude': longitude,
+      'direccion': direccion,
+      'ciudad': ciudad,
+      'pais': pais,
     };
   }
   static List<InmuebleModel> fromList(dynamic data) {

@@ -6,6 +6,7 @@ import '../screens/components/message_widget.dart';
 import '../screens/interfaces/authenticated_screen_state.dart';
 import 'user_global_provider.dart';
 import 'blockchain_provider.dart';
+import '../../datos/reverb_service.dart';
 
 class AuthenticatedProvider extends ChangeNotifier{
   late AuthenticatedNegocio authenticatedNegocio;
@@ -44,6 +45,9 @@ class AuthenticatedProvider extends ChangeNotifier{
 
   // Global user provider instance
   final UserGlobalProvider _userGlobalProvider = UserGlobalProvider();
+
+  // Reverb service instance for WebSocket subscriptions
+  final ReverbService _reverbService = ReverbService();
 
   AuthenticatedProvider() {
     authenticatedNegocio = AuthenticatedNegocio();
@@ -93,18 +97,10 @@ class AuthenticatedProvider extends ChangeNotifier{
         // Update global user state
         _userGlobalProvider.updateUser(userActual);
 
-        // Update the user's wallet address if blockchain is initialized
-        try {
-          final blockchainProvider = BlockchainProvider.instance;
-          if (blockchainProvider.isInitialized) {
-            await blockchainProvider.updateUserWalletAddress();
-            print('Wallet address updated for logged in user');
-          } else {
-            print('Blockchain not initialized, wallet address not updated');
-          }
-        } catch (e) {
-          print('Error updating wallet address: $e');
-        }
+        // Subscribe to user's personal WebSocket channel
+        _subscribeToUserChannel(userActual!);
+
+        // Wallet management is handled by backend via HTTP
 
         isSuccess = responseModel.isSuccess;
         isLoading = false;
@@ -166,18 +162,10 @@ class AuthenticatedProvider extends ChangeNotifier{
       // Update global user state
       _userGlobalProvider.updateUser(userActual);
 
-      // Update the user's wallet address if blockchain is initialized
-      try {
-        final blockchainProvider = BlockchainProvider.instance;
-        if (blockchainProvider.isInitialized) {
-          await blockchainProvider.updateUserWalletAddress();
-          print('Wallet address updated for new user');
-        } else {
-          print('Blockchain not initialized, wallet address not updated');
-        }
-      } catch (e) {
-        print('Error updating wallet address: $e');
-      }
+      // Subscribe to user's personal WebSocket channel
+      _subscribeToUserChannel(userActual!);
+
+      // Wallet management is handled by backend via HTTP
 
       // Establecer estado exitoso sin mensaje
       isSuccess = true;
@@ -204,6 +192,60 @@ class AuthenticatedProvider extends ChangeNotifier{
     userActual = await getUserSession();
     // Update global user state
     _userGlobalProvider.updateUser(userActual);
+
+    // Subscribe to user's personal channel if user exists
+    if (userActual != null) {
+      _subscribeToUserChannel(userActual!);
+    }
+  }
+
+  /// Subscribe user to their personal WebSocket channel with robust retry mechanism
+  void _subscribeToUserChannel(UserModel user) {
+    print('🔔 Iniciando suscripción al canal user.${user.id}...');
+
+    bool subscribed = false;
+    int attempts = 0;
+    const maxAttempts = 15; // 15 intentos = 30 segundos (cada 2s)
+
+    void trySubscribe() {
+      if (subscribed) return;
+
+      attempts++;
+
+      if (_reverbService.isConnected) {
+        _reverbService.subscribeToUserChannel(user.id);
+        subscribed = true;
+        print('✅ Usuario suscrito al canal: user.${user.id} (${user.tipoUsuario}) [intento $attempts]');
+        return;
+      }
+
+      if (attempts >= maxAttempts) {
+        print('❌ No se pudo suscribir al canal user.${user.id} después de $maxAttempts intentos (30s)');
+        print('⚠️ Estado de Reverb: ${_reverbService.status}');
+        print('💡 Las notificaciones en tiempo real NO funcionarán hasta que se reconecte');
+        return;
+      }
+
+      // Reintentar cada 2 segundos
+      Future.delayed(const Duration(seconds: 2), trySubscribe);
+    }
+
+    // Estrategia 1: Verificación inmediata
+    trySubscribe();
+
+    // Estrategia 2: Escuchar eventos de conexión (backup)
+    final subscription = _reverbService.connectionStatus.listen((status) {
+      if (status == ReverbConnectionStatus.connected && !subscribed) {
+        _reverbService.subscribeToUserChannel(user.id);
+        subscribed = true;
+        print('✅ Usuario suscrito al canal: user.${user.id} (${user.tipoUsuario}) [vía evento]');
+      }
+    });
+
+    // Limpiar listener después de 35 segundos
+    Future.delayed(const Duration(seconds: 35), () {
+      subscription.cancel();
+    });
   }
 
   Future<UserModel?> getUserSession() async {
@@ -230,6 +272,14 @@ class AuthenticatedProvider extends ChangeNotifier{
     print('   - Usuario actual antes de logout: ${userActual?.email} (ID: ${userActual?.id})');
 
     isLoading = true;
+
+    // Unsubscribe from WebSocket channels before logout
+    if (userActual != null) {
+      print('📡 Desconectando usuario del canal WebSocket...');
+      // Note: ReverbService doesn't have unsubscribe method,
+      // but disconnecting on app close handles cleanup
+    }
+
     ResponseModel responseModel = await authenticatedNegocio.logout(userActual!.id);
     if (responseModel.statusCode == 200) {
       message = responseModel.message;

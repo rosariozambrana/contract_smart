@@ -4,6 +4,7 @@ import '../../../providers/pago_provider.dart';
 import '../../../providers/blockchain_provider.dart';
 import '../../../../negocio/models/pago_model.dart';
 import '../../../../negocio/models/contrato_model.dart';
+import '../../../../core/constants/crypto_constants.dart';
 
 class RealizarPagoScreen extends StatefulWidget {
   final PagoModel pago;
@@ -21,20 +22,29 @@ class RealizarPagoScreen extends StatefulWidget {
 
 class _RealizarPagoScreenState extends State<RealizarPagoScreen> {
   bool _isLoading = false;
-  bool _blockchainEnabled = false;
+  bool _blockchainEnabled = true; // HTTP-based, always available
   String? _errorMessage;
   final _formKey = GlobalKey<FormState>();
+  bool _esPrimerPago = false;
 
   @override
   void initState() {
     super.initState();
     _checkBlockchainStatus();
+    _detectarPrimerPago();
+  }
+
+  /// Detecta si es el primer pago basado en el estado del contrato
+  void _detectarPrimerPago() {
+    _esPrimerPago = widget.contrato.estado == 'aprobado';
   }
 
   Future<void> _checkBlockchainStatus() async {
     final blockchainProvider = context.read<BlockchainProvider>();
+    // Check if backend is connected to blockchain
+    final isConnected = await blockchainProvider.checkGanacheConnection();
     setState(() {
-      _blockchainEnabled = blockchainProvider.isInitialized;
+      _blockchainEnabled = isConnected;
     });
   }
 
@@ -43,24 +53,25 @@ class _RealizarPagoScreenState extends State<RealizarPagoScreen> {
       return;
     }
 
+    // Mostrar confirmación antes de realizar el pago
+    final confirmar = await _mostrarDialogConfirmacion();
+    if (confirmar != true) return;
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
-      // Actualizar el estado del pago a 'completado'
-      final success = await context.read<PagoProvider>().updatePagoEstado(
-        widget.pago.id,
-        'completado',
-      );
+      // ✅ PAGO MEDIANTE BLOCKCHAIN - Descuenta ETH del cliente
+      final success = await context.read<PagoProvider>().createPagoBlockchain(widget.pago);
 
       if (success) {
         // Mostrar mensaje de éxito y volver a la pantalla anterior
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Pago realizado con éxito'),
+            content: Text('Pago realizado con éxito mediante blockchain'),
             backgroundColor: Colors.green,
           ),
         );
@@ -80,6 +91,92 @@ class _RealizarPagoScreenState extends State<RealizarPagoScreen> {
     }
   }
 
+  /// Muestra dialog de confirmación con desglose del pago
+  Future<bool?> _mostrarDialogConfirmacion() async {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirmar Pago'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_esPrimerPago) ...[
+              const Text(
+                'Este es tu PRIMER PAGO que incluye:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text('• Depósito (50%): ${CryptoConstants.formatEth(widget.contrato.monto * 0.5)}'),
+              Text('• Primer mes: ${CryptoConstants.formatEth(widget.contrato.monto)}'),
+              const Divider(),
+              const SizedBox(height: 4),
+              Text(
+                'ℹ️ El depósito se devolverá al finalizar el contrato si no hay daños',
+                style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.grey[600]),
+              ),
+              const SizedBox(height: 8),
+            ] else ...[
+              const Text('Pago mensual de renta'),
+              const SizedBox(height: 8),
+            ],
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Monto total: ${CryptoConstants.formatEth(widget.pago.monto)}',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  '≈ ${CryptoConstants.formatUsdFromEth(widget.pago.monto)}',
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.warning_amber, color: Colors.orange[700]),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Esta operación en blockchain NO puede revertirse',
+                      style: TextStyle(
+                        color: Colors.orange[700],
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Confirmar Pago'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -95,6 +192,54 @@ class _RealizarPagoScreenState extends State<RealizarPagoScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Desglose del primer pago
+                    if (_esPrimerPago) ...[
+                      Card(
+                        color: Colors.blue.shade50,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.info_outline, color: Colors.blue[700]),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Primer Pago',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                      color: Colors.blue[700],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const Divider(),
+                              _buildDetalleRow('Depósito (50%):', '${CryptoConstants.formatEth(widget.contrato.monto * 0.5)} (≈ ${CryptoConstants.formatUsdFromEth(widget.contrato.monto * 0.5)})'),
+                              _buildDetalleRow('Primer mes de renta:', '${CryptoConstants.formatEth(widget.contrato.monto)} (≈ ${CryptoConstants.formatUsdFromEth(widget.contrato.monto)})'),
+                              const Divider(),
+                              _buildDetalleRow(
+                                'TOTAL A PAGAR:',
+                                '${CryptoConstants.formatEth(widget.pago.monto)} (≈ ${CryptoConstants.formatUsdFromEth(widget.pago.monto)})',
+                                bold: true,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'ℹ️ El depósito se devolverá al finalizar el contrato si no hay daños',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontStyle: FontStyle.italic,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+
                     // Detalles del pago
                     Card(
                       margin: const EdgeInsets.only(bottom: 24),
@@ -109,7 +254,7 @@ class _RealizarPagoScreenState extends State<RealizarPagoScreen> {
                             ),
                             const SizedBox(height: 16),
                             _buildInfoRow('Propiedad:', widget.contrato.inmueble?.nombre ?? 'Propiedad'),
-                            _buildInfoRow('Monto a pagar:', '\$${widget.pago.monto.toStringAsFixed(2)}'),
+                            _buildInfoRow('Monto a pagar:', '${CryptoConstants.formatEth(widget.pago.monto)} (≈ ${CryptoConstants.formatUsdFromEth(widget.pago.monto)})'),
                             _buildInfoRow('Fecha de pago:', _formatDate(widget.pago.fechaPago)),
                             _buildInfoRow('Propietario:', widget.contrato.inmueble?.propietario?.name ?? 'Propietario'),
                           ],
@@ -225,5 +370,31 @@ class _RealizarPagoScreenState extends State<RealizarPagoScreen> {
 
   String _formatDate(DateTime date) {
     return '${date.day}/${date.month}/${date.year}';
+  }
+
+  Widget _buildDetalleRow(String label, String value, {bool bold = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+              fontSize: bold ? 14 : 13,
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+              fontSize: bold ? 14 : 13,
+              color: bold ? Colors.blue[700] : Colors.black,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

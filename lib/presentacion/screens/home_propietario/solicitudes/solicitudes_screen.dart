@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../../../negocio/models/solicitud_alquiler_model.dart';
 import '../../../providers/solicitud_alquiler_provider.dart';
 import 'crear_contrato_screen.dart';
+import '../../../../core/constants/crypto_constants.dart';
 
 class SolicitudesScreen extends StatefulWidget {
   const SolicitudesScreen({Key? key}) : super(key: key);
@@ -204,10 +205,20 @@ class _SolicitudesScreenState extends State<SolicitudesScreen> with SingleTicker
                   'Detalle: ${solicitud.inmueble?.detalle ?? "No disponible"}',
                   style: const TextStyle(fontSize: 14),
                 ),
-                Text(
-                  'Precio: \$${solicitud.inmueble?.precio?.toStringAsFixed(2) ?? "No disponible"}',
-                  style: const TextStyle(fontSize: 14),
-                ),
+                if (solicitud.inmueble?.precio != null) ...[
+                  Text(
+                    'Precio: ${solicitud.inmueble!.precio.toStringAsFixed(2)} ETH/mes',
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    '≈ ${CryptoConstants.formatUsdFromEth(solicitud.inmueble!.precio)}/mes',
+                    style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                  ),
+                ] else
+                  const Text(
+                    'Precio: No disponible',
+                    style: TextStyle(fontSize: 14),
+                  ),
               ],
             ),
           ),

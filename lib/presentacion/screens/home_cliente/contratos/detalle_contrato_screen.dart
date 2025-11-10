@@ -117,7 +117,7 @@ class _DetalleContratoScreenState extends State<DetalleContratoScreen> with Sing
           return const Center(child: CircularProgressIndicator());
         }
 
-        if (provider.pagos.isEmpty) {
+        if (provider.pagosContrato.isEmpty) {
           return const Center(
             child: Text('No hay pagos registrados para este contrato'),
           );
@@ -631,7 +631,13 @@ class _DetalleContratoScreenState extends State<DetalleContratoScreen> with Sing
 
   void _showPaymentDialog(
       BuildContext context, ContratoModel contrato, ContratoProvider provider) {
-    final montoController = TextEditingController(text: contrato.monto.toString());
+    // Calcular monto según sea primer pago o mensual
+    final esPrimerPago = contrato.estado == 'aprobado';
+    final montoCalculado = esPrimerPago
+        ? (contrato.monto * 0.5) + contrato.monto  // Primer pago: Depósito + Renta
+        : contrato.monto;                           // Pagos mensuales: Solo renta
+
+    final montoController = TextEditingController(text: montoCalculado.toString());
     final fechaPagoController = TextEditingController(
       text: dateFormat.format(DateTime.now()),
     );
@@ -645,14 +651,52 @@ class _DetalleContratoScreenState extends State<DetalleContratoScreen> with Sing
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Vas a realizar el pago del alquiler por un monto de \$${contrato.monto.toStringAsFixed(2)}',
+              esPrimerPago
+                  ? 'Vas a realizar el PRIMER PAGO del alquiler'
+                  : 'Vas a realizar el pago mensual del alquiler',
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
+            // Mostrar desglose si es primer pago
+            if (esPrimerPago) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Primer Pago',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text('Depósito (50%): \$${(contrato.monto * 0.5).toStringAsFixed(2)}', style: const TextStyle(fontSize: 12)),
+                    Text('Primer mes: \$${contrato.monto.toStringAsFixed(2)}', style: const TextStyle(fontSize: 12)),
+                    const Divider(),
+                    Text('TOTAL: \$${montoCalculado.toStringAsFixed(2)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             Text(
               contrato.fechaPago == null
                   ? 'Este pago activará tu contrato de alquiler.'
                   : 'Este pago se registrará como un pago mensual de tu contrato.',
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 14,
                 color: Colors.grey,
               ),
@@ -660,10 +704,11 @@ class _DetalleContratoScreenState extends State<DetalleContratoScreen> with Sing
             const SizedBox(height: 16),
             TextFormField(
               controller: montoController,
-              decoration: const InputDecoration(
-                labelText: 'Monto',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: esPrimerPago ? 'Monto (calculado automáticamente)' : 'Monto',
+                border: const OutlineInputBorder(),
                 prefixText: '\$ ',
+                helperText: esPrimerPago ? 'Incluye depósito + primer mes' : null,
               ),
               keyboardType: TextInputType.number,
             ),

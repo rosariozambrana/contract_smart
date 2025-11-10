@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../datos/notification_service.dart';
-import '../../../datos/socket_service.dart';
+import '../../../datos/reverb_service.dart';
 import '../../../negocio/models/user_model.dart';
 import '../../providers/authenticated_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -55,7 +55,7 @@ class NotificationCenterScreen extends StatefulWidget {
 class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
   final List<NotificationItem> _notifications = [];
   UserModel? _currentUser;
-  late SocketService _socketService;
+  late ReverbService _reverbService;
   late NotificationService _notificationService;
   bool _isInitialized = false;
 
@@ -64,23 +64,19 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
   @override
   void initState() {
     super.initState();
-    /*_socketService = Provider.of<SocketService>(context, listen: false);
-    _notificationService = Provider.of<NotificationService>(context, listen: false);
-    _currentUser = Provider.of<AuthenticatedProvider>(context, listen: false).userActual;*/
-   // _addSampleNotifications();
-
+    // Services are initialized in didChangeDependencies to have access to context
   }
 
       @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    
+
     // ✅ MOVER toda la inicialización aquí
     if (!_isInitialized) {
     print('🔧 [NotificationCenter] INICIO - didChangeDependencies');
     print('🔧 [NotificationCenter] Usuario actual: ${Provider.of<AuthenticatedProvider>(context, listen: false).userActual?.name}');
 
-      _socketService = Provider.of<SocketService>(context, listen: false);
+      _reverbService = Provider.of<ReverbService>(context, listen: false);
       _notificationService = Provider.of<NotificationService>(context, listen: false);
       _currentUser = Provider.of<AuthenticatedProvider>(context, listen: false).userActual;
 
@@ -96,11 +92,6 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
 
         // ✅ CARGAR notificaciones DESPUÉS
     _loadNotifications().then((_) {
-      // Solo agregar samples si no hay notificaciones guardadas
-      if (_notifications.isEmpty) {
-        print('🔧 [NotificationCenter] Agregando notificaciones de muestra');
-        _addSampleNotifications();
-      }
       // ✅ AGREGAR debug final
       _debugNotificationCenter();
 
@@ -116,20 +107,27 @@ Future<void> _loadNotifications() async {
     final prefs = await SharedPreferences.getInstance();
     final userId = _currentUser?.id?.toString() ?? 'default';
     final notificationsJson = prefs.getString('${_notificationsKey}_$userId');
-    
+
     if (notificationsJson != null && notificationsJson.isNotEmpty) {
       final List<dynamic> notificationsList = jsonDecode(notificationsJson);
       final allNotifications = notificationsList
           .map((json) => NotificationItem.fromJson(json))
           .toList();
-      
+
+      // ✅ AGREGAR: Eliminar notificaciones de prueba (IDs 1001-1004)
+      final cleanedNotifications = allNotifications.where((n) => n.id < 1001 || n.id > 1004).toList();
+
+      if (allNotifications.length != cleanedNotifications.length) {
+        print('🗑️ [NotificationCenter] Eliminadas ${allNotifications.length - cleanedNotifications.length} notificaciones de prueba');
+      }
+
       // ✅ AGREGAR: Filtrar notificaciones al cargar
       final filteredNotifications = <NotificationItem>[];
       final userRole = _currentUser?.tipoUsuario?.toLowerCase() ?? '';
-      
-      print('🔍 [NotificationCenter] Filtrando ${allNotifications.length} notificaciones para $userRole');
-      
-      for (final notification in allNotifications) {
+
+      print('🔍 [NotificationCenter] Filtrando ${cleanedNotifications.length} notificaciones para $userRole');
+
+      for (final notification in cleanedNotifications) {
         if (_shouldShowNotification(notification, userRole)) {
           filteredNotifications.add(notification);
           print('✅ [NotificationCenter] Cargada: ${notification.title}');
@@ -137,13 +135,18 @@ Future<void> _loadNotifications() async {
           print('🚫 [NotificationCenter] Filtrada: ${notification.title} (no para $userRole)');
         }
       }
-      
+
       setState(() {
         _notifications.clear();
         _notifications.addAll(filteredNotifications);
       });
-      
-      print('✅ [NotificationCenter] ${filteredNotifications.length} de ${allNotifications.length} notificaciones cargadas para $userRole');
+
+      // ✅ Guardar la lista limpia (sin notificaciones de prueba)
+      if (allNotifications.length != cleanedNotifications.length) {
+        await _saveNotifications();
+      }
+
+      print('✅ [NotificationCenter] ${filteredNotifications.length} de ${cleanedNotifications.length} notificaciones cargadas para $userRole');
     }
   } catch (e) {
     print('❌ [NotificationCenter] Error cargando notificaciones: $e');
@@ -260,56 +263,7 @@ void _addNotification({
 }
 
 
-// ✅ REEMPLAZAR el método _addSampleNotifications:
-void _addSampleNotifications() {
-  // Solo en debug y si no hay notificaciones
-  if (_notifications.isNotEmpty) {
-    print('🔧 [NotificationCenter] Ya existen notificaciones, omitiendo samples');
-    return;
-  }
-  
-  final userRole = _currentUser?.tipoUsuario?.toLowerCase() ?? '';
-  print('🔧 [NotificationCenter] Agregando samples para $userRole');
-  
-  assert(() {
-    // Usar Future.delayed para evitar conflictos con setState
-    Future.delayed(Duration.zero, () {
-      if (mounted) {
-        // ✅ CORREGIR: Samples específicos según el rol
-        if (userRole == 'propietario') {
-          _addNotification(
-            id: 1001,
-            title: '🔔 Nueva Solicitud',
-            body: 'Has recibido una nueva solicitud para: Apartamento en Miraflores',
-            payload: 'request_status_1001',
-          );
-          _addNotification(
-            id: 1002,
-            title: '💰 Pago Recibido',
-            body: 'Se ha recibido un pago de \$1,200.00 para la propiedad: Casa en San Isidro',
-            payload: 'payment_received_1002',
-          );
-        } else if (userRole == 'cliente') {
-          _addNotification(
-            id: 1003,
-            title: '✅ Solicitud Actualizada',
-            body: 'Tu solicitud para la propiedad "Departamento en San Borja" ha sido aprobada',
-            payload: 'request_status_1003',
-          );
-        }
-        
-        // ✅ Contratos para ambos
-        _addNotification(
-          id: 1004,
-          title: '📄 Contrato Generado',
-          body: 'Se ha generado un contrato para la propiedad: Villa en La Molina',
-          payload: 'contract_generated_1004',
-        );
-      }
-    });
-    return true;
-  }());
-}
+// Método _addSampleNotifications eliminado - Ya no se crean notificaciones de prueba
 
 
 

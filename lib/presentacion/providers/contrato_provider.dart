@@ -15,7 +15,8 @@ import '../../negocio/SessionNegocio.dart';
 import '../../negocio/SolicitudAlquilerNegocio.dart';
 import '../../negocio/UserNegocio.dart';
 import '../../datos/notification_service.dart';
-import '../../datos/socket_service.dart';
+import '../../datos/reverb_service.dart';
+import '../../datos/blockchain_api_service.dart';
 import '../screens/components/message_widget.dart';
 import 'blockchain_provider.dart';
 import 'user_global_provider.dart';
@@ -30,7 +31,7 @@ class ContratoProvider extends ChangeNotifier {
   final UserGlobalProvider _userGlobalProvider = UserGlobalProvider();
 
   // Services for notifications
-  late SocketService _socketService;
+  late ReverbService _reverbService;
   late NotificationService _notificationService;
   final BuildContext? _context;
 
@@ -56,7 +57,7 @@ class ContratoProvider extends ChangeNotifier {
 
     // Initialize services if context is provided
     if (_context != null) {
-      _socketService = Provider.of<SocketService>(_context, listen: false);
+      _reverbService = Provider.of<ReverbService>(_context, listen: false);
       _notificationService = Provider.of<NotificationService>(_context, listen: false);
     }
     if (condicionales.isEmpty) {
@@ -88,7 +89,7 @@ class ContratoProvider extends ChangeNotifier {
 
   // Method to initialize services if not done in constructor
   void initializeServices(BuildContext context) {
-    _socketService = Provider.of<SocketService>(context, listen: false);
+    _reverbService = Provider.of<ReverbService>(context, listen: false);
     _notificationService = Provider.of<NotificationService>(context, listen: false);
   }
 
@@ -158,94 +159,29 @@ class ContratoProvider extends ChangeNotifier {
       print('Response from createContrato: ${response.toJson()}');
       if (response.isSuccess && response.data != null) {
         selectedContrato = ContratoModel.fromMap(response.data);
-        message = 'Contrato creado exitosamente';
 
-        // If this contract is associated with a solicitud, update its status
-        if (contrato.solicitudId != null) {
-          ResponseModel _res = await _solicitudNegocio.updateSolicitudEstado(contrato.solicitudId!, 'contrato_generado');
-          print('Response from updateSolicitudEstado: ${_res.toJson()}');
-        }
-        ResponseModel resCli = await _authenticatedNegocio.getUser(contrato.userId);
-        UserModel? cliente = UserModel.mapToModel(resCli.data);
-        InmuebleModel? inmueble = await _inmuebleNegocio.getInmuebleById(contrato.inmuebleId);
-        ResponseModel resProp = await _authenticatedNegocio.getUser(inmueble!.userId);
-        UserModel? propietario = UserModel.mapToModel(resProp.data);
+        // ✅ El backend YA hizo TODO automáticamente en UNA sola transacción:
+        // 1. Creó el contrato en BD
+        // 2. Actualizó estado de solicitud a 'contrato_generado'
+        // 3. Broadcast evento cambio estado solicitud vía WebSocket
+        // 4. Asignó wallets a propietario y cliente (si no tenían)
+        // 5. Creó el contrato en blockchain
+        // 6. Guardó blockchain_address (tx_hash) en BD
 
-
-
-        // Check if blockchain is initialized, if not, initialize it
-        if (!_blockchainProvider.isInitialized) {
-          print('Blockchain no inicializado, inicializando antes de crear contrato...');
-          try {
-            bool initSuccess = await _blockchainProvider.ensureInitialized();
-            if (!initSuccess) {
-              print('Error al inicializar el servicio blockchain');
-              message = 'No se pudo inicializar el servicio blockchain';
-              // Podrías querer registrar el error en un servicio de análisis
-            } else {
-              print('---------------------------------------------Servicio blockchain inicializado correctamente--------------------------------------------');
-            }
-          } catch (e) {
-            print('Excepción durante la inicialización blockchain: $e');
-            message = 'Error en la inicialización blockchain: ${e.toString()}';
-          }
-        }
-
-        // Create contract on blockchain
-        final blockchainResult = await _blockchainProvider.createRentalContract(
-          selectedContrato!,
-          propietario,
-          cliente,
-        );
-        print('Blockchain result: $blockchainResult');
-
-        if (blockchainResult != null) {
-          message = '$message y registrado en blockchain';
-
-          // Update contract with blockchain data
-          if (blockchainResult.containsKey('txHash')) {
-            selectedContrato!.blockchainTxHash = blockchainResult['txHash'];
-          }
-
-          if (blockchainResult.containsKey('contractAddress') && blockchainResult['contractAddress']!.isNotEmpty) {
-            selectedContrato!.blockchainAddress = blockchainResult['contractAddress'];
-            // Update contract in database with blockchain address and transaction hash
-            await _contratoNegocio.updateContratoBlockchain(
-                selectedContrato!.id,
-                blockchainResult['contractAddress']!,
-                blockchainTxHash: blockchainResult['txHash']
-            );
-          }
-        }
-        // Create contract on blockchain if both users have wallet addresses
-        /*if (_blockchainProvider.isInitialized) {
-          try {
-
-          } catch (blockchainError) {
-            // Don't fail the entire operation if blockchain fails
-            print('Error creating contract on blockchain: $blockchainError');
-          }
-        }*/
-
+        message = 'Contrato creado exitosamente y registrado en blockchain';
+        print('✅ Contrato creado por el backend:');
+        print('   - ID: ${selectedContrato!.id}');
+        print('   - Blockchain Address: ${selectedContrato!.blockchainAddress}');
+        print('   - Estado: ${selectedContrato!.estado}');
+        print('   - Solicitud actualizada automáticamente por el backend');
 
         // Send notification via WebSocket if services are initialized
         if (_isServicesInitialized()) {
           try {
-            // Send WebSocket notification
-            _socketService.emitContractGenerated(
-              solicitudId: contrato.solicitudId ?? 0,
-              contratoId: selectedContrato!.id,
-              propertyName: contrato.inmueble!.nombre,
-              clientId: contrato.cliente!.id,
-              propietarioId: contrato.inmueble!.userId,
-            );
-
-            // Show local notification
             _notificationService.showContractGeneratedNotification(
               solicitudId: contrato.solicitudId ?? 0,
               propertyName: contrato.inmueble!.nombre,
             );
-
             print('Contract generation notification sent');
           } catch (notificationError) {
             print('Error sending contract generation notification: $notificationError');
@@ -270,18 +206,12 @@ class ContratoProvider extends ChangeNotifier {
   // Helper method to check if services are initialized
   bool _isServicesInitialized() {
     try {
-      // Check if socket and notification services are initialized
-      bool servicesInitialized = _socketService != null && _notificationService != null;
+      // Check if reverb and notification services are initialized
+      bool servicesInitialized = _reverbService != null && _notificationService != null;
 
-      // Check if blockchain is initialized, if not, try to initialize it
-      if (!_blockchainProvider.isInitialized) {
-        print('Blockchain not initialized, attempting to initialize...');
-        // We don't await here because this method returns a bool, not a Future
-        // The initialization will happen asynchronously
-        _blockchainProvider.ensureInitialized();
-      }
+      // Blockchain via HTTP doesn't need initialization check
 
-      return servicesInitialized && _blockchainProvider.isInitialized;
+      return servicesInitialized;
     } catch (e) {
       print('Error checking services initialization: $e');
       return false;
@@ -426,122 +356,91 @@ class ContratoProvider extends ChangeNotifier {
 
     try {
       isLoading = true;
-      ResponseModel response = await _contratoNegocio.updateContratoClienteAprobado(id, clienteAprobado);
 
-      if (response.isSuccess) {
-        message = clienteAprobado 
-            ? 'Contrato aprobado exitosamente' 
-            : 'Contrato rechazado exitosamente';
+      if (clienteAprobado) {
+        print('✅ Aprobando contrato en blockchain...');
 
-        // Update the contract status based on approval
-        if (clienteAprobado) {
-          await _contratoNegocio.updateContratoEstado(id, 'aprobado');
+        // ✅ El endpoint /blockchain/contract/approve hace TODO automáticamente:
+        // 1. Aprueba en blockchain
+        // 2. Actualiza cliente_aprobado = true en BD
+        // 3. Actualiza estado = 'aprobado' en BD
+        final blockchainResponse = await _blockchainProvider.approveContract(id, currentUser!.id);
 
-          // Check if blockchain is initialized, if not, initialize it
-          if (!_blockchainProvider.isInitialized) {
-            print('Blockchain not initialized, initializing before approving contract...');
-            bool initSuccess = await _blockchainProvider.ensureInitialized();
-            if (!initSuccess) {
-              print('Failed to initialize blockchain service');
-              message = '$message (No se pudo inicializar el servicio blockchain)';
-              // Continue with contract approval even if blockchain initialization fails
-            } else {
-              print('Blockchain service initialized successfully');
-            }
-          }
+        if (blockchainResponse == null) {
+          message = 'Error al aprobar el contrato en blockchain';
+          isLoading = false;
+          return false;
+        }
 
-          // Approve contract on blockchain
-          try {
-            final blockchainSuccess = await _blockchainProvider.approveContract(id);
-            if (blockchainSuccess != null) {
-              message = '$message y actualizado en blockchain';
-            }
-          } catch (blockchainError) {
-            // Don't fail the entire operation if blockchain fails
-            print('Error approving contract on blockchain: $blockchainError');
-          }
+        message = 'Contrato aprobado exitosamente en blockchain';
+        print('✅ TX Hash: ${blockchainResponse['txHash']}');
 
-          // Get the contract to send notification
-          ContratoModel? contrato;
-          for (var c in contratos) {
-            if (c.id == id) {
-              contrato = c;
-              break;
-            }
-          }
-
-          // Send notification via WebSocket if services are initialized and we have the contract data
-          if (_isServicesInitialized() && contrato != null && contrato.inmueble != null && contrato.cliente != null) {
-            try {
-              // Send WebSocket notification
-              _socketService.emitRequestStatusChanged(
-                solicitudId: contrato.solicitudId ?? 0,
-                propertyName: contrato.inmueble!.nombre,
-                status: 'contrato_aprobado',
-                clientId: contrato.cliente!.id,
-                propietarioId: contrato.inmueble!.userId,
-              );
-
-              // Show local notification
-              _notificationService.showNotification(
-                id: id,
-                title: 'Contrato Aprobado',
-                body: 'El contrato para la propiedad ${contrato.inmueble!.nombre} ha sido aprobado',
-                payload: 'contract_approved_$id',
-              );
-
-              print('Contract approval notification sent');
-            } catch (notificationError) {
-              print('Error sending contract approval notification: $notificationError');
-            }
-          }
-        } else {
-          await _contratoNegocio.updateContratoEstado(id, 'rechazado');
-
-          // Get the contract to send notification
-          ContratoModel? contrato;
-          for (var c in contratos) {
-            if (c.id == id) {
-              contrato = c;
-              break;
-            }
-          }
-
-          // Send notification via WebSocket if services are initialized and we have the contract data
-          if (_isServicesInitialized() && contrato != null && contrato.inmueble != null && contrato.cliente != null) {
-            try {
-              // Send WebSocket notification
-              _socketService.emitRequestStatusChanged(
-                solicitudId: contrato.solicitudId ?? 0,
-                propertyName: contrato.inmueble!.nombre,
-                status: 'contrato_rechazado',
-                clientId: contrato.cliente!.id,
-                propietarioId: contrato.inmueble!.userId,
-              );
-
-              // Show local notification
-              _notificationService.showNotification(
-                id: id,
-                title: 'Contrato Rechazado',
-                body: 'El contrato para la propiedad ${contrato.inmueble!.nombre} ha sido rechazado',
-                payload: 'contract_rejected_$id',
-              );
-
-              print('Contract rejection notification sent');
-            } catch (notificationError) {
-              print('Error sending contract rejection notification: $notificationError');
-            }
+        // Get the contract to send notification
+        ContratoModel? contrato;
+        for (var c in contratos) {
+          if (c.id == id) {
+            contrato = c;
+            break;
           }
         }
-        // Refresh the list
-        await loadContratosByClienteId();
-        isLoading = false;
-        return true;
+
+        // Send notification
+        if (_isServicesInitialized() && contrato != null && contrato.inmueble != null && contrato.cliente != null) {
+          try {
+            _notificationService.showNotification(
+              id: id,
+              title: 'Contrato Aprobado',
+              body: 'El contrato para la propiedad ${contrato.inmueble!.nombre} ha sido aprobado',
+              payload: 'contract_approved_$id',
+            );
+            print('Contract approval notification sent');
+          } catch (notificationError) {
+            print('Error sending contract approval notification: $notificationError');
+          }
+        }
       } else {
-        message = response.messageError ?? 'Error al actualizar la aprobación del contrato';
-        isLoading = false;
-        return false;
+        // Rechazar contrato: actualizar BD directamente
+        print('❌ Rechazando contrato...');
+        ResponseModel response = await _contratoNegocio.updateContratoClienteAprobado(id, false);
+
+        if (!response.isSuccess) {
+          message = response.messageError ?? 'Error al rechazar el contrato';
+          isLoading = false;
+          return false;
+        }
+
+        message = 'Contrato rechazado exitosamente';
+        await _contratoNegocio.updateContratoEstado(id, 'rechazado');
+
+        // Get the contract to send notification
+        ContratoModel? contrato;
+        for (var c in contratos) {
+          if (c.id == id) {
+            contrato = c;
+            break;
+          }
+        }
+
+        // Send notification
+        if (_isServicesInitialized() && contrato != null && contrato.inmueble != null && contrato.cliente != null) {
+          try {
+            _notificationService.showNotification(
+              id: id,
+              title: 'Contrato Rechazado',
+              body: 'El contrato para la propiedad ${contrato.inmueble!.nombre} ha sido rechazado',
+              payload: 'contract_rejected_$id',
+            );
+            print('Contract rejection notification sent');
+          } catch (notificationError) {
+            print('Error sending contract rejection notification: $notificationError');
+          }
+        }
       }
+
+      // Refresh the list
+      await loadContratosByClienteId();
+      isLoading = false;
+      return true;
     } catch (e) {
       message = 'Error al actualizar la aprobación del contrato: $e';
       isLoading = false;
@@ -549,6 +448,93 @@ class ContratoProvider extends ChangeNotifier {
     }
   }
 
+  /// Registrar pago mediante BLOCKCHAIN (pago real con ETH)
+  Future<bool> registrarPagoContratoBlockchain(int id, DateTime fechaPago, {BuildContext? context}) async {
+    try {
+      // Initialize services if context is provided and not already initialized
+      if (context != null && !_isServicesInitialized()) {
+        initializeServices(context);
+      }
+
+      isLoading = true;
+
+      // Get the contract
+      ContratoModel? contrato;
+      for (var c in contratos) {
+        if (c.id == id) {
+          contrato = c;
+          break;
+        }
+      }
+      if (contrato == null) {
+        message = 'No se encontró el contrato';
+        isLoading = false;
+        return false;
+      }
+
+      // ✅ PRIMERO: Calcular monto del pago (con depósito si es primer pago)
+      final blockchainApiService = BlockchainApiService();
+      final calculoResponse = await blockchainApiService.calcularMontoPago(id);
+
+      if (!calculoResponse.isSuccess || calculoResponse.data == null) {
+        message = 'Error al calcular monto de pago: ${calculoResponse.messageError}';
+        isLoading = false;
+        return false;
+      }
+
+      final montoTotal = (calculoResponse.data['monto_total'] as num).toDouble();
+      final requiereDeposito = calculoResponse.data['requiere_deposito'] as bool;
+
+      print('💰 Realizando pago blockchain: Contrato $id, Monto: $montoTotal (Requiere depósito: $requiereDeposito), Usuario: ${currentUser!.id}');
+
+      // ✅ SEGUNDO: Hacer pago en blockchain (descuenta ETH)
+      final blockchainResult = await _blockchainProvider.makePayment(id, montoTotal, currentUser!.id);
+
+      if (blockchainResult == null) {
+        message = 'Error al procesar el pago en blockchain: ${_blockchainProvider.message}';
+        isLoading = false;
+        return false;
+      }
+
+      // ✅ SEGUNDO: Si blockchain funciona, actualizar BD
+      ResponseModel response = await _contratoNegocio.updateContratoFechaPago(id, fechaPago);
+      if (!response.isSuccess) {
+        message = response.messageError ?? 'Error al registrar el pago en BD (blockchain completado)';
+        isLoading = false;
+        return false;
+      }
+
+      // ✅ El backend actualiza automáticamente el estado del contrato a 'activo' después del pago
+      // No es necesario llamar manualmente a updateContratoEstado()
+
+      message = 'Pago procesado en blockchain exitosamente. TX: ${blockchainResult['txHash']}';
+
+      // Send notification
+      if (_isServicesInitialized() && contrato.cliente != null && contrato.inmueble != null) {
+        try {
+          _notificationService.showPaymentReceivedNotification(
+            contratoId: id,
+            propertyName: contrato.inmueble!.nombre,
+            amount: contrato.monto,
+            userType: 'propietario',
+          );
+        } catch (notificationError) {
+          print('Error sending payment notification: $notificationError');
+        }
+      }
+
+      // Refresh the list
+      await loadContratosByClienteId();
+      isLoading = false;
+      return true;
+    } catch (e) {
+      message = 'Error al procesar el pago blockchain: $e';
+      isLoading = false;
+      return false;
+    }
+  }
+
+  /// Registrar pago CONVENCIONAL (sin blockchain, solo registro)
   Future<bool> registrarPagoContrato(int id, DateTime fechaPago, {BuildContext? context}) async {
     try {
       // Initialize services if context is provided and not already initialized
@@ -572,50 +558,14 @@ class ContratoProvider extends ChangeNotifier {
       }
       ResponseModel response = await _contratoNegocio.updateContratoFechaPago(id, fechaPago);
       if (response.isSuccess) {
-        message = 'Pago registrado exitosamente';
+        message = 'Pago convencional registrado exitosamente (sin blockchain)';
         // Update the contract status to active
         await _contratoNegocio.updateContratoEstado(id, 'activo');
-        // Check if blockchain is initialized, if not, initialize it
-        if (!_blockchainProvider.isInitialized) {
-          print('Blockchain not initialized, initializing before making payment...');
-          bool initSuccess = await _blockchainProvider.ensureInitialized();
-          if (!initSuccess) {
-            print('Failed to initialize blockchain service');
-            message = '$message (No se pudo inicializar el servicio blockchain)';
-            // Continue with payment registration even if blockchain initialization fails
-          } else {
-            print('Blockchain service initialized successfully');
-          }
-        }
-
-        // Make payment on blockchain
-        try {
-          final blockchainSuccess = await _blockchainProvider.makePayment(id, contrato.monto);
-          if (blockchainSuccess != null) {
-            message = '$message y procesado en blockchain';
-            // Update blockchain address if payment was successful
-            final blockchainDetails = await _blockchainProvider.getContractDetails(id);
-            if (blockchainDetails != null && blockchainDetails.containsKey('landlord')) {
-              final blockchainAddress = blockchainDetails['landlord'];
-              await updateContratoBlockchain(id, blockchainAddress);
-            }
-          }
-        } catch (blockchainError) {
-          // Don't fail the entire operation if blockchain fails
-          print('Error making payment on blockchain: $blockchainError');
-        }
 
         // Send notification via WebSocket if services are initialized
         if (_isServicesInitialized() && contrato.cliente != null && contrato.inmueble != null) {
           try {
             // Send WebSocket notification
-            _socketService.emitPaymentReceived(
-              contratoId: id,
-              propertyName: contrato.inmueble!.nombre,
-              amount: contrato.monto,
-              clientId: contrato.cliente!.id,
-              propietarioId: contrato.inmueble!.userId,
-            );
 
             // Show local notification
             _notificationService.showPaymentReceivedNotification(

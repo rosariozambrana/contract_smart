@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../datos/socket_service.dart';
+import '../../datos/reverb_service.dart';
 
 class NotificationBadge extends StatefulWidget {
   const NotificationBadge({Key? key}) : super(key: key);
@@ -12,34 +12,30 @@ class NotificationBadge extends StatefulWidget {
 
 class _NotificationBadgeState extends State<NotificationBadge> {
   int _unreadCount = 0;
-  late SocketService _socketService;
+  late ReverbService _reverbService;
   final List<StreamSubscription> _subscriptions = [];
 
   @override
   void initState() {
     super.initState();
-    _socketService = Provider.of<SocketService>(context, listen: false);
+    _reverbService = Provider.of<ReverbService>(context, listen: false);
 
     // Listen to contract generation events
-    _subscriptions.add(_socketService.onContractGenerated.listen((_) {
+    _subscriptions.add(_reverbService.onContractGenerated.listen((_) {
       _incrementUnreadCount();
     }));
 
     // Listen to payment received events
-    _subscriptions.add(_socketService.onPaymentReceived.listen((_) {
+    _subscriptions.add(_reverbService.onPaymentReceived.listen((_) {
       _incrementUnreadCount();
     }));
 
     // Listen to request status changed events
-    _subscriptions.add(_socketService.onRequestStatusChanged.listen((_) {
+    _subscriptions.add(_reverbService.onRequestStatusChanged.listen((_) {
       _incrementUnreadCount();
     }));
 
-    // Add some unread notifications for testing in development mode
-    assert(() {
-      _unreadCount = 3; // Start with 3 unread notifications for testing
-      return true;
-    }());
+    // ✅ Código de prueba eliminado - contador inicia en 0
   }
 
   @override

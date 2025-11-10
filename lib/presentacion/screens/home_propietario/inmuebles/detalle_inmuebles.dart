@@ -11,7 +11,9 @@ import '../../../../negocio/models/inmueble_model.dart';
 import '../../../../negocio/models/galeria_inmueble_model.dart';
 import '../../../providers/inmueble_provider.dart';
 import '../../components/Loading.dart';
+import '../../components/image_carousel_inmueble.dart';
 import 'my_inmuebles_screen.dart';
+import '../../../../core/constants/crypto_constants.dart';
 
 class DetalleInmueblesScreen extends StatefulWidget {
   final bool isEditing;
@@ -40,6 +42,7 @@ class _DetalleInmueblesScreenState extends State<DetalleInmueblesScreen> {
   List<XFile> _selectedImages = [];
   List<GaleriaInmuebleModel> _existingImages = [];
   bool _isUploading = false;
+  String _usdEquivalent = ''; // Para mostrar conversión en tiempo real
 
   @override
   void initState() {
@@ -53,6 +56,9 @@ class _DetalleInmueblesScreenState extends State<DetalleInmueblesScreen> {
       _precioController.text = widget.inmueble!.precio.toString();
       _isOcupado = widget.inmueble!.isOcupado;
       _tipoInmuebleId = widget.inmueble!.tipoInmuebleId;
+
+      // Inicializar conversión USD
+      _usdEquivalent = CryptoConstants.formatUsdFromEth(widget.inmueble!.precio);
 
       // Inicializar los servicios seleccionados si existen
       if (widget.inmueble!.servicios_basicos != null) {
@@ -375,12 +381,15 @@ class _DetalleInmueblesScreenState extends State<DetalleInmueblesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final apiService = context.read<InmuebleProvider>();
+    // Use select() to listen only to isLoading changes
+    final isLoading = context.select<InmuebleProvider, bool>((provider) => provider.isLoading);
+    final provider = context.read<InmuebleProvider>();
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.isEditing ? 'Editar Inmueble' : 'Crear Inmueble'),
         actions: [
-          if (!apiService.isLoading && !_isUploading)
+          if (!isLoading && !_isUploading)
             IconButton(
               icon: const Icon(Icons.save),
               onPressed: _saveInmueble,
@@ -389,8 +398,8 @@ class _DetalleInmueblesScreenState extends State<DetalleInmueblesScreen> {
         ],
       ),
       body:
-          apiService.isLoading
-              ? Loading(title: 'Cargando inmueble...')
+          isLoading
+              ? Loading(title: 'Guardando inmueble...')
               : SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
                 child: Form(
@@ -469,21 +478,56 @@ class _DetalleInmueblesScreenState extends State<DetalleInmueblesScreen> {
                       TextFormField(
                         controller: _precioController,
                         decoration: const InputDecoration(
-                          labelText: 'Precio',
+                          labelText: 'Precio Mensual (ETH)',
                           border: OutlineInputBorder(),
-                          prefixText: '\$ ',
+                          hintText: '2.0',
+                          helperText: 'Rango recomendado: 0.2 - 10 ETH',
+                          suffixText: 'ETH',
                         ),
-                        keyboardType: TextInputType.number,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        onChanged: (value) {
+                          final eth = double.tryParse(value);
+                          if (eth != null && eth > 0) {
+                            setState(() {
+                              _usdEquivalent = CryptoConstants.formatUsdFromEth(eth);
+                            });
+                          } else {
+                            setState(() {
+                              _usdEquivalent = '';
+                            });
+                          }
+                        },
                         validator: (value) {
                           if (value == null || value.isEmpty) {
-                            return 'Por favor ingrese un precio';
+                            return 'Por favor ingrese un precio en ETH';
                           }
-                          if (double.tryParse(value) == null) {
+                          final eth = double.tryParse(value);
+                          if (eth == null) {
                             return 'Por favor ingrese un número válido';
+                          }
+                          if (eth <= 0) {
+                            return 'El precio debe ser mayor a 0';
+                          }
+                          if (eth > 100) {
+                            return 'Precio muy alto. Usar rango 0.2 - 10 ETH';
                           }
                           return null;
                         },
                       ),
+                      if (_usdEquivalent.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 12),
+                          child: Text(
+                            '≈ $_usdEquivalent USD/mes',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[600],
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 16),
                       Consumer<InmuebleProvider>(
                         builder: (context, provider, child) {
@@ -599,8 +643,8 @@ class _DetalleInmueblesScreenState extends State<DetalleInmueblesScreen> {
                         style: TextStyle(fontSize: 14, color: Colors.grey),
                       ),
                       const SizedBox(height: 16),
-                      // Existing images
-                      if (apiService.galeriaInmueble.isNotEmpty) ...[
+                      // Existing images carousel
+                      if (provider.galeriaInmueble.isNotEmpty) ...[
                         const Text(
                           'Imágenes existentes:',
                           style: TextStyle(
@@ -609,7 +653,48 @@ class _DetalleInmueblesScreenState extends State<DetalleInmueblesScreen> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        _buildImageList(apiService.galeriaInmueble, true),
+                        Stack(
+                          children: [
+                            ImageCarouselInmueble(
+                              galeriaInmueble: provider.galeriaInmueble,
+                              height: 200,
+                            ),
+                            Positioned(
+                              top: 8,
+                              right: 8,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withOpacity(0.6),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  '${provider.galeriaInmueble.length} imagen${provider.galeriaInmueble.length > 1 ? 'es' : ''}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Desliza para ver todas las imágenes',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                            fontStyle: FontStyle.italic,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        _buildImageList(provider.galeriaInmueble, true),
                         const SizedBox(height: 16),
                       ],
                       // Selected images
@@ -660,17 +745,37 @@ class _DetalleInmueblesScreenState extends State<DetalleInmueblesScreen> {
                         height: 50,
                         child: ElevatedButton(
                           onPressed:
-                              apiService.isLoading || _isUploading ? null : _saveInmueble,
+                              isLoading || _isUploading ? null : _saveInmueble,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.blue,
                             foregroundColor: Colors.white,
+                            disabledBackgroundColor: Colors.grey,
                           ),
-                          child: Text(
-                            widget.isEditing
-                                ? 'Actualizar Inmueble'
-                                : 'Crear Inmueble',
-                            style: const TextStyle(fontSize: 16),
-                          ),
+                          child: isLoading || _isUploading
+                              ? const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                      ),
+                                    ),
+                                    SizedBox(width: 12),
+                                    Text(
+                                      'Guardando...',
+                                      style: TextStyle(fontSize: 16),
+                                    ),
+                                  ],
+                                )
+                              : Text(
+                                  widget.isEditing
+                                      ? 'Actualizar Inmueble'
+                                      : 'Crear Inmueble',
+                                  style: const TextStyle(fontSize: 16),
+                                ),
                         ),
                       ),
                     ],

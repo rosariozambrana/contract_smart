@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../../../negocio/models/contrato_model.dart';
 import '../../../providers/contrato_provider.dart';
 import 'detalle_contrato_screen.dart';
+import '../../../../core/constants/crypto_constants.dart';
 
 class ContratosClienteScreen extends StatefulWidget {
   const ContratosClienteScreen({Key? key}) : super(key: key);
@@ -206,14 +207,87 @@ class _ContratosClienteScreenState extends State<ContratosClienteScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                Text(
-                  'Monto Mensual: \$${contrato.monto.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green,
+                // Mostrar información de pago según el estado del contrato
+                if (contrato.estado.toLowerCase() == 'aprobado') ...[
+                  // Primer pago pendiente - mostrar desglose
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.shade200),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.info_outline, color: Colors.orange.shade700, size: 20),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Primer Pago Pendiente',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.orange.shade700,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Divider(),
+                        _buildPaymentRow('Renta mensual:', CryptoConstants.formatEth(contrato.monto)),
+                        _buildPaymentRow('Depósito (50%):', CryptoConstants.formatEth(contrato.monto * 0.5), isSubItem: true),
+                        const Divider(),
+                        _buildPaymentRow(
+                          'Total primer pago:',
+                          CryptoConstants.formatEth(contrato.monto * 1.5),
+                          isBold: true,
+                          color: Colors.orange.shade700,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '≈ ${CryptoConstants.formatUsdFromEth(contrato.monto * 1.5)}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'ℹ️ El depósito se devuelve al finalizar',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontStyle: FontStyle.italic,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                ] else ...[
+                  // Contrato activo o pendiente - mostrar solo renta mensual
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Renta Mensual: ${CryptoConstants.formatEth(contrato.monto)}',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '≈ ${CryptoConstants.formatUsdFromEth(contrato.monto)}/mes',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
 
                 // Contract details if available
                 if (contrato.detalle != null && contrato.detalle!.isNotEmpty) ...[
@@ -305,7 +379,36 @@ class _ContratosClienteScreenState extends State<ContratosClienteScreen> {
     }
   }
 
+  Widget _buildPaymentRow(String label, String value, {bool isBold = false, bool isSubItem = false, Color? color}) {
+    return Padding(
+      padding: EdgeInsets.only(left: isSubItem ? 16.0 : 0, top: 4, bottom: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+              color: color,
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showApprovalDialog(BuildContext context, ContratoModel contrato, ContratoProvider provider) {
+    final double primerPago = contrato.monto * 1.5;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -318,8 +421,41 @@ class _ContratosClienteScreenState extends State<ContratosClienteScreen> {
               '¿Deseas aceptar o rechazar el contrato para "${contrato.inmueble?.nombre ?? 'este inmueble'}"?',
             ),
             const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Primer pago requerido:',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text('• Renta mensual: ${CryptoConstants.formatEth(contrato.monto)}'),
+                  Text('• Depósito (50%): ${CryptoConstants.formatEth(contrato.monto * 0.5)}'),
+                  const Divider(),
+                  Text(
+                    'Total: ${CryptoConstants.formatEth(primerPago)}',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    '≈ ${CryptoConstants.formatUsdFromEth(primerPago)}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
             const Text(
-              'Al aceptar, deberás realizar el pago del primer mes para activar el contrato.',
+              'Al aceptar, deberás realizar este pago para activar el contrato.',
               style: TextStyle(
                 fontSize: 14,
                 color: Colors.grey,
@@ -361,73 +497,112 @@ class _ContratosClienteScreenState extends State<ContratosClienteScreen> {
   }
 
   void _showPaymentDialog(BuildContext context, ContratoModel contrato, ContratoProvider provider) {
+    String selectedPaymentMethod = 'blockchain'; // ✅ Default: Blockchain
+    final bool esPrimerPago = contrato.estado.toLowerCase() == 'aprobado';
+    final double montoPago = esPrimerPago ? (contrato.monto * 1.5) : contrato.monto;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Realizar Pago'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Vas a realizar el pago del primer mes de alquiler por un monto de \$${contrato.monto.toStringAsFixed(2)}',
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Este pago activará tu contrato de alquiler.',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Realizar Pago'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (esPrimerPago) ...[
+                const Text(
+                  'Primer pago de alquiler:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text('• Renta mensual: ${CryptoConstants.formatEth(contrato.monto)}'),
+                Text('• Depósito (50%): ${CryptoConstants.formatEth(contrato.monto * 0.5)}'),
+                const Divider(),
+                Text(
+                  'Total: ${CryptoConstants.formatEth(montoPago)}',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                Text(
+                  '≈ ${CryptoConstants.formatUsdFromEth(montoPago)}',
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
+              ] else
+                Text(
+                  'Vas a realizar el pago mensual por ${CryptoConstants.formatEth(montoPago)} (≈ ${CryptoConstants.formatUsdFromEth(montoPago)})',
+                ),
+              const SizedBox(height: 16),
+              Text(
+                esPrimerPago ? 'Este pago activará tu contrato de alquiler.' : 'Este pago corresponde a la renta mensual.',
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey,
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Selecciona el método de pago:',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
+              const SizedBox(height: 16),
+              const Text(
+                'Selecciona el método de pago:',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            // Payment methods
-            ListTile(
-              title: const Text('Pago Convencional'),
-              leading: Radio<String>(
-                value: 'convencional',
-                groupValue: 'convencional', // Default selected
-                onChanged: (value) {},
+              const SizedBox(height: 8),
+              // Payment methods
+              ListTile(
+                title: const Text('Pago con Blockchain'),
+                subtitle: const Text('Pago seguro mediante Ethereum (Ganache)'),
+                leading: Radio<String>(
+                  value: 'blockchain',
+                  groupValue: selectedPaymentMethod,
+                  onChanged: (value) {
+                    setState(() {
+                      selectedPaymentMethod = value!;
+                    });
+                  },
+                ),
               ),
-            ),
-            ListTile(
-              title: const Text('Pago con Blockchain'),
-              subtitle: const Text('Próximamente'),
-              leading: Radio<String>(
-                value: 'blockchain',
-                groupValue: 'convencional',
-                onChanged: null, // Disabled for now
+              ListTile(
+                title: const Text('Pago Convencional'),
+                subtitle: const Text('Registro manual del pago'),
+                leading: Radio<String>(
+                  value: 'convencional',
+                  groupValue: selectedPaymentMethod,
+                  onChanged: (value) {
+                    setState(() {
+                      selectedPaymentMethod = value!;
+                    });
+                  },
+                ),
               ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                if (selectedPaymentMethod == 'blockchain') {
+                  // ✅ Pago mediante blockchain
+                  await provider.registrarPagoContratoBlockchain(contrato.id, DateTime.now(), context: context);
+                } else {
+                  // Pago convencional
+                  await provider.registrarPagoContrato(contrato.id, DateTime.now(), context: context);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: selectedPaymentMethod == 'blockchain' ? Colors.green : Colors.blue,
+                foregroundColor: Colors.white,
+              ),
+              child: Text(selectedPaymentMethod == 'blockchain' ? 'Pagar con Blockchain' : 'Confirmar Pago'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await provider.registrarPagoContrato(contrato.id, DateTime.now(), context: context);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Confirmar Pago'),
-          ),
-        ],
       ),
     );
   }

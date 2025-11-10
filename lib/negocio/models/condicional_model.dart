@@ -25,12 +25,25 @@ class CondicionalModel {
   }
 
   factory CondicionalModel.fromMap(Map<String, dynamic> map) {
+    // Convertir parametros si es List a Map vacío
+    dynamic parametrosData = map['parametros'];
+    print('🔍 DEBUG parametros: $parametrosData (tipo: ${parametrosData.runtimeType})');
+    Map<String, dynamic>? parametros;
+
+    if (parametrosData is Map) {
+      parametros = Map<String, dynamic>.from(parametrosData);
+    } else if (parametrosData is List && parametrosData.isEmpty) {
+      parametros = {}; // Convertir lista vacía a map vacío
+    } else {
+      parametros = null;
+    }
+
     return CondicionalModel(
       id: map['id'] ?? 0,
       descripcion: map['descripcion'] ?? '',
       tipoCondicion: map['tipo_condicion'] ?? '',
       accion: map['accion'] ?? '',
-      parametros: map['parametros'],
+      parametros: parametros,
     );
   }
 

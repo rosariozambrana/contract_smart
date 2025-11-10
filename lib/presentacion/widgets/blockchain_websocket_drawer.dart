@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../providers/blockchain_provider.dart';
-import '../../datos/websocket_admin_service.dart';
-import '../../datos/socket_service.dart';
-import 'websocket_status_widget.dart';
+import '../../datos/reverb_service.dart';
 
 class BlockchainWebSocketDrawer extends StatefulWidget {
   const BlockchainWebSocketDrawer({Key? key}) : super(key: key);
@@ -15,28 +13,17 @@ class BlockchainWebSocketDrawer extends StatefulWidget {
 }
 
 class _BlockchainWebSocketDrawerState extends State<BlockchainWebSocketDrawer> {
-  bool _isBlockchainInitialized = false;
   bool _showCodeExamples = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkBlockchainStatus();
-    });
-  }
-
-  Future<void> _checkBlockchainStatus() async {
-    final blockchainProvider = context.read<BlockchainProvider>();
-    setState(() {
-      _isBlockchainInitialized = blockchainProvider.isInitialized;
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     final blockchainProvider = context.watch<BlockchainProvider>();
-    final adminService = Provider.of<WebSocketAdminService>(
+    final reverbService = Provider.of<ReverbService>(
       context,
       listen: false,
     );
@@ -75,12 +62,8 @@ class _BlockchainWebSocketDrawerState extends State<BlockchainWebSocketDrawer> {
                       children: [
                         _buildStatusRow(
                           'Servicio Blockchain',
-                          blockchainProvider.isInitialized
-                              ? 'Conectado'
-                              : 'Desconectado',
-                          blockchainProvider.isInitialized
-                              ? Colors.green
-                              : Colors.red,
+                          'Backend maneja vía HTTP',
+                          Colors.blue,
                         ),
                         _buildStatusRow(
                           'Red',
@@ -102,80 +85,30 @@ class _BlockchainWebSocketDrawerState extends State<BlockchainWebSocketDrawer> {
                               'No disponible',
                           Colors.blue,
                         ),
-                        if (blockchainProvider.contractAddress != null)
-                          _buildStatusRow(
-                            'Dirección del Contrato',
-                            blockchainProvider.contractAddress!,
-                            Colors.blue,
-                          ),
-                        if (blockchainProvider.lastInitError != null)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Text(
-                              'Error de inicialización: ${blockchainProvider.lastInitError}',
-                              style: const TextStyle(
-                                color: Colors.red,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        if (blockchainProvider.walletAddress != null)
-                          _buildStatusRow(
-                            'Wallet',
-                            blockchainProvider.walletAddress!,
-                            Colors.deepPurple,
-                            isLong: true,
-                          ),
-                        if (blockchainProvider.walletBalance != null)
-                          _buildStatusRow(
-                            'Balance',
-                            '${blockchainProvider.walletBalance} ETH',
-                            blockchainProvider.walletBalance == 0.0
-                                ? Colors.red
-                                : Colors.green,
-                          ),
-                        if (blockchainProvider.walletBalance == 0.0)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Text(
-                              '¡Atención! El wallet no tiene saldo. Debes enviar ETH desde Ganache.',
-                              style: const TextStyle(
-                                color: Colors.red,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
                         const SizedBox(height: 8),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
-                            TextButton.icon(
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Reinicializar'),
-                              onPressed: () async {
-                                await blockchainProvider.ensureInitialized();
-                                _checkBlockchainStatus();
-                              },
-                            ),
-                            const SizedBox(width: 8),
                             ElevatedButton.icon(
                               icon: const Icon(Icons.wifi_tethering),
-                              label: const Text('Probar conexión Ganache'),
+                              label: const Text('Probar conexión Backend'),
                               onPressed: () async {
                                 final ok =
                                     await blockchainProvider
                                         .checkGanacheConnection();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      ok
-                                          ? '¡Conectado a Ganache!'
-                                          : 'No se pudo conectar a Ganache',
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        ok
+                                            ? '¡Backend conectado a Blockchain!'
+                                            : 'Backend no pudo conectar a Blockchain',
+                                      ),
+                                      backgroundColor:
+                                          ok ? Colors.green : Colors.red,
                                     ),
-                                    backgroundColor:
-                                        ok ? Colors.green : Colors.red,
-                                  ),
-                                );
+                                  );
+                                }
                               },
                             ),
                           ],
@@ -189,14 +122,33 @@ class _BlockchainWebSocketDrawerState extends State<BlockchainWebSocketDrawer> {
 
                 // WebSocket Status
                 Text(
-                  'Estado de WebSocket',
+                  'Estado de Reverb (WebSocket)',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 16),
-                WebSocketStatusWidget(
-                  adminService: adminService,
-                  showControls: true,
-                  showStats: false,
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildStatusRow(
+                          'Servicio Reverb',
+                          reverbService.isConnected
+                              ? 'Conectado'
+                              : 'Desconectado',
+                          reverbService.isConnected
+                              ? Colors.green
+                              : Colors.red,
+                        ),
+                        _buildStatusRow(
+                          'Estado',
+                          reverbService.status.toString().split('.').last,
+                          _getStatusColor(reverbService.status),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
 
                 const SizedBox(height: 24),
@@ -259,7 +211,7 @@ class _BlockchainWebSocketDrawerState extends State<BlockchainWebSocketDrawer> {
                         ),
                         const SizedBox(height: 8),
                         const Text(
-                          'Para utilizar el WebSocketAdminService:',
+                          'Para utilizar el ReverbService:',
                           style: TextStyle(fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 8),
@@ -272,7 +224,7 @@ class _BlockchainWebSocketDrawerState extends State<BlockchainWebSocketDrawer> {
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: const Text(
-                            'final adminService = Provider.of<WebSocketAdminService>(context, listen: false);',
+                            'final reverbService = Provider.of<ReverbService>(context, listen: false);',
                             style: TextStyle(fontFamily: 'monospace'),
                           ),
                         ),
@@ -333,15 +285,14 @@ class _BlockchainWebSocketDrawerState extends State<BlockchainWebSocketDrawer> {
                               '''
 Future<void> checkBlockchainStatus() async {
   final blockchainProvider = BlockchainProvider.instance;
-  
-  // Asegurar que blockchain esté inicializado
-  await blockchainProvider.ensureInitialized();
-  
-  // Verificar estado
-  if (blockchainProvider.isInitialized) {
-    print('Blockchain está conectado');
+
+  // Verificar conexión del backend a Ganache
+  final isConnected = await blockchainProvider.checkGanacheConnection();
+
+  if (isConnected) {
+    print('Backend conectado a Blockchain');
   } else {
-    print('Blockchain no está conectado');
+    print('Backend no pudo conectar a Blockchain');
   }
 }
 ''',
@@ -353,7 +304,7 @@ Future<void> checkBlockchainStatus() async {
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            'Ejemplo: Escuchar eventos WebSocket',
+                            'Ejemplo: Escuchar eventos Reverb',
                             style: Theme.of(context).textTheme.titleMedium,
                           ),
                           const SizedBox(height: 8),
@@ -365,20 +316,25 @@ Future<void> checkBlockchainStatus() async {
                             ),
                             child: const Text(
                               '''
-void listenToWebSocketEvents() {
-  final adminService = Provider.of<WebSocketAdminService>(
-    context, 
+void listenToReverbEvents() {
+  final reverbService = Provider.of<ReverbService>(
+    context,
     listen: false
   );
-  
+
   // Escuchar cambios de estado
-  adminService.connectionStatus.listen((status) {
+  reverbService.connectionStatus.listen((status) {
     print('Estado de conexión: \$status');
   });
-  
-  // Escuchar eventos administrativos
-  adminService.adminEvents.listen((event) {
-    print('Evento recibido: \$event');
+
+  // Escuchar eventos de contratos
+  reverbService.onContractGenerated.listen((event) {
+    print('Contrato generado: \$event');
+  });
+
+  // Escuchar eventos de pagos
+  reverbService.onPaymentReceived.listen((event) {
+    print('Pago recibido: \$event');
   });
 }
 ''',
@@ -399,6 +355,20 @@ void listenToWebSocketEvents() {
         ),
       ),
     );
+  }
+
+  Color _getStatusColor(ReverbConnectionStatus status) {
+    switch (status) {
+      case ReverbConnectionStatus.connected:
+        return Colors.green;
+      case ReverbConnectionStatus.connecting:
+      case ReverbConnectionStatus.reconnecting:
+        return Colors.orange;
+      case ReverbConnectionStatus.disconnected:
+        return Colors.grey;
+      case ReverbConnectionStatus.error:
+        return Colors.red;
+    }
   }
 
   Widget _buildStatusRow(

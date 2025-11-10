@@ -10,7 +10,7 @@ import 'contratos/contratos_cliente_screen.dart';
 import 'contratos/historial_contratos_screen.dart';
 import 'solicitudes/solicitudes_screen.dart';
 import '../blockchain/blockchain_control_screen.dart';
-import '../../../datos/socket_service.dart';
+import '../../../datos/reverb_service.dart';
 
 class HomeClienteScreen extends StatefulWidget {
   const HomeClienteScreen({super.key});
@@ -70,8 +70,8 @@ class _HomeClienteScreenState extends State<HomeClienteScreen> {
             Builder(
               builder: (context) {
                 try {
-                  // Verificar si SocketService está disponible
-                  Provider.of<SocketService>(context, listen: false);
+                  // Verificar si ReverbService está disponible
+                  Provider.of<ReverbService>(context, listen: false);
                   return const NotificationBadge();
                 } catch (e) {
                   return const Icon(Icons.notifications_off);

@@ -1,23 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import '../../datos/blockchain_service.dart';
+import '../../datos/blockchain_api_service.dart';
 import '../../negocio/models/contrato_model.dart';
 import '../../negocio/models/user_model.dart';
-import 'authenticated_provider.dart';
-import 'user_global_provider.dart';
+import '../../negocio/models/response_model.dart';
 
 class BlockchainProvider extends ChangeNotifier {
   static BlockchainProvider? _instance;
-  final BlockchainService _blockchainService = BlockchainService();
-  final UserGlobalProvider _userGlobalProvider = UserGlobalProvider();
-  final AuthenticatedProvider? _authenticatedProvider;
+  final BlockchainApiService _blockchainApiService = BlockchainApiService();
 
-  bool _isInitialized = false;
   bool _isLoading = false;
   String? _message;
-  String? _contractAddress;
-  String? _lastInitError;
-  double? _walletBalance;
 
   // Singleton pattern to ensure we have only one instance
   static BlockchainProvider get instance {
@@ -26,369 +18,234 @@ class BlockchainProvider extends ChangeNotifier {
   }
 
   // Private constructor for singleton
-  BlockchainProvider._internal() : _authenticatedProvider = null;
-
-  // Constructor with AuthenticatedProvider
-  BlockchainProvider._withAuthProvider(AuthenticatedProvider authProvider)
-    : _authenticatedProvider = authProvider;
+  BlockchainProvider._internal();
 
   // Public constructor for provider system
-  factory BlockchainProvider({AuthenticatedProvider? authProvider}) {
-    if (authProvider != null && _instance == null) {
-      _instance = BlockchainProvider._withAuthProvider(authProvider);
-    } else if (_instance == null) {
-      _instance = BlockchainProvider._internal();
-    }
+  factory BlockchainProvider() {
+    _instance ??= BlockchainProvider._internal();
     return _instance!;
   }
 
-  // Method to update the user's wallet address
-  Future<bool> updateUserWalletAddress() async {
-    if (!_isInitialized) {
-      await ensureInitialized();
-    }
-
-    try {
-      // Get the wallet address from the blockchain service
-      final walletAddress = _blockchainService.getWalletAddress();
-
-      // Get the current user from the global provider
-      final currentUser = _userGlobalProvider.currentUser;
-
-      if (currentUser != null) {
-        // Check if the wallet address has changed
-        if (currentUser.walletAddress != walletAddress) {
-          // Create a new user model with the updated wallet address
-          final updatedUser = UserModel(
-            id: currentUser.id,
-            name: currentUser.name,
-            email: currentUser.email,
-            usernick: currentUser.usernick,
-            numId: currentUser.numId,
-            telefono: currentUser.telefono,
-            direccion: currentUser.direccion,
-            walletAddress: walletAddress,
-            tipoUsuario: currentUser.tipoUsuario,
-            photoPath: currentUser.photoPath,
-            createdAt: currentUser.createdAt,
-            updatedAt: currentUser.updatedAt,
-          );
-
-          // Update the user in the global provider
-          _userGlobalProvider.updateUser(updatedUser);
-
-          // Update the user in the backend if authenticated provider is available
-          if (_authenticatedProvider != null) {
-            await _authenticatedProvider!.updateUserProfile(updatedUser);
-          }
-
-          _message = 'Wallet address updated: $walletAddress';
-          notifyListeners();
-          return true;
-        }
-      }
-      return false;
-    } catch (e) {
-      _message = 'Error updating wallet address: $e';
-      notifyListeners();
-      return false;
-    }
-  }
-
   // Getters
-  bool get isInitialized => _isInitialized;
   bool get isLoading => _isLoading;
   String? get message => _message;
-  String? get contractAddress => _contractAddress;
-  String? get lastInitError => _lastInitError;
-  String? get walletAddress =>
-      _isInitialized ? _blockchainService.getWalletAddress() : null;
-  double? get walletBalance => _walletBalance;
 
-  // Initialize the blockchain service with explicit parameters
-  Future<bool> initialize({
-    required String rpcUrl,
-    required String privateKey,
-    required int chainId,
-    required String contractAddress,
-  }) async {
-    print(
-      '------------------------ Initializing blockchain service with contractAddress: $contractAddress ------------------------------------------',
-    );
-    _isLoading = true;
-    _message = 'Inicializando servicio blockchain...';
-    _lastInitError = null;
-    notifyListeners();
-
-    try {
-      await _blockchainService.initialize(
-        rpcUrl: rpcUrl,
-        privateKey: privateKey,
-        chainId: chainId,
-        contractAddress: contractAddress,
-      );
-
-      _isInitialized = true;
-      _message = 'Servicio blockchain inicializado correctamente';
-      _lastInitError = null;
-
-      // Update the user's wallet address
-      await updateUserWalletAddress();
-
-      // Obtener balance
-      try {
-        _walletBalance = await _blockchainService.getBalance();
-      } catch (e) {
-        _walletBalance = null;
-      }
-
-      _isLoading = false;
-      notifyListeners();
-      return true;
-    } catch (e) {
-      _message = 'Error al inicializar el servicio blockchain: $e';
-      _lastInitError = e.toString();
-      _isLoading = false;
-      notifyListeners();
-      return false;
-    }
-  }
-
-  /// Initialize the blockchain service with default parameters from .env
-  /// All values must be present in .env, including contract address.
-  Future<bool> initializeFromEnv() async {
-    // Get blockchain configuration from .env
-    final rpcUrl = dotenv.env['BLOCKCHAIN_RPC_URL_LOCAL'] ?? '';
-    final privateKey = dotenv.env['MNEMONIC'] ?? '';
-    final chainId =
-        int.tryParse(dotenv.env['BLOCKCHAIN_CHAIN_ID_LOCAL'] ?? '') ?? 0;
-    final contractAddress =
-        dotenv.env['BLOCKCHAIN_CONTRACT_ADDRESS_LOCAL'] ?? '';
-
-    print(
-      '------------------- Initializing blockchain with RPC URL: $rpcUrl, Chain ID: $chainId, Contract Address: $contractAddress -------------------------------',
-    );
-
-    if (rpcUrl.isEmpty ||
-        privateKey.isEmpty ||
-        chainId == 0 ||
-        contractAddress.isEmpty) {
-      _message =
-          'Configuración blockchain incompleta en .env (rpcUrl, privateKey, chainId, contractAddress requeridos)';
-      notifyListeners();
-      return false;
-    }
-
-    // Initialize the blockchain service
-    bool success = await initialize(
-      rpcUrl: rpcUrl,
-      privateKey: privateKey,
-      chainId: chainId,
-      contractAddress: contractAddress,
-    );
-    print(
-      '------------------- Blockchain initialized: $success for environment $rpcUrl -------------------------------',
-    );
-
-    return success;
-  }
-
-  // Ensure blockchain is initialized before any operation
-  Future<bool> ensureInitialized() async {
-    if (_isInitialized) return true;
-    return await initializeFromEnv();
-  }
-
-  // Deploy the smart contract
-  Future<String?> deploySmartContract() async {
-    // Ensure blockchain is initialized
-    if (!await ensureInitialized()) {
-      return null;
-    }
-
-    _isLoading = true;
-    _message = 'Desplegando smart contract...';
-    notifyListeners();
-
-    try {
-      final address = await _blockchainService.deployContract(
-        contractBinPath: 'assets/rentals/build/contracts/RentalContract.bin',
-        contractAbiPath: 'assets/rentals/build/contracts/RentalContract.json',
-      );
-      _contractAddress = address;
-      _message = 'Smart contract desplegado correctamente en: $address';
-      _isLoading = false;
-      notifyListeners();
-      return address;
-    } catch (e) {
-      _message = 'Error al desplegar el smart contract: $e';
-      _isLoading = false;
-      notifyListeners();
-      return null;
-    }
-  }
-
-  // Create a rental contract on the blockchain
+  // Create a rental contract on the blockchain (vía backend Laravel)
   Future<Map<String, String>?> createRentalContract(
     ContratoModel contrato,
     UserModel propietario,
     UserModel cliente,
   ) async {
-    print('Creating rental contract on blockchain...');
-    // Ensure blockchain is initialized
-    if (!await ensureInitialized()) {
-      print('BLOCK CHAIN NO INIZIALIZADA');
-      return null;
-    }
+    print('📝 Creando contrato en blockchain vía backend...');
 
     _isLoading = true;
     _message = 'Creando contrato en blockchain...';
     notifyListeners();
 
     try {
-      // Check if users have wallet addresses
-      final landlordAddress = '0x0000000000000000000000000000000000000001';
-      print('Landlord wallet address: $landlordAddress');
-      final tenantAddress = '0x0000000000000000000000000000000000000002';
-      print('Tenant wallet address: $tenantAddress');
+      // El backend se encarga de todo: obtener claves, firmar, enviar a Ganache
+      ResponseModel response = await _blockchainApiService.createContract(contrato.id);
 
-      /*if (landlordAddress == null || landlordAddress.isEmpty) {
-        _message = 'El propietario no tiene una dirección de wallet configurada';
+      if (response.isSuccess && response.data != null) {
+        _message = 'Contrato creado en blockchain. Transaction hash: ${response.data['tx_hash']}';
+        print('✅ Blockchain contract creation result: ${response.data}');
+
         _isLoading = false;
         notifyListeners();
-        return null;
-      }
 
-      if (tenantAddress == null || tenantAddress.isEmpty) {
-        _message = 'El cliente no tiene una dirección de wallet configurada';
-        print('Tenant wallet address is empty');
-        _isLoading = false;
-        notifyListeners();
-        return null;
-      }*/
-
-      // Create contract on blockchain
-      final result = await _blockchainService.createRentalContract(
-        contrato,
-        landlordAddress.toLowerCase(),
-        tenantAddress.toLowerCase(),
-      );
-      print(
-        '-----------------------------Blockchain contract creation result: $result',
-      );
-
-      if (result != null) {
-        _message =
-            'Contrato creado en blockchain. Transaction hash: ${result['txHash']}';
-        print('Blockchain contract creation result: $result');
-        if (result['contractAddress'] != null &&
-            result['contractAddress']!.isNotEmpty) {
-          _message =
-              '$_message, Contract address: ${result['contractAddress']}';
-          print('Contract address: ${result['contractAddress']}');
-        }
+        return {
+          'txHash': response.data['tx_hash'] ?? '',
+          'contractAddress': response.data['contract_address'] ?? '',
+        };
       } else {
-        _message = 'Error: No se pudo crear el contrato en blockchain.';
-        print('Blockchain contract creation result: null');
+        _message = response.messageError ?? 'Error al crear el contrato en blockchain';
+        print('❌ Error: $_message');
+        _isLoading = false;
+        notifyListeners();
+        return null;
       }
-
-      _isLoading = false;
-      notifyListeners();
-      return result;
     } catch (e) {
       _message = 'Error al crear el contrato en blockchain: $e';
+      print('❌ Excepción: $_message');
       _isLoading = false;
       notifyListeners();
       return null;
     }
   }
 
-  // Approve a contract on the blockchain
-  Future<Map<String, String>?> approveContract(int contractId) async {
-    // Ensure blockchain is initialized
-    if (!await ensureInitialized()) {
-      return null;
-    }
+  // Approve a contract on the blockchain (vía backend Laravel)
+  Future<Map<String, String>?> approveContract(int contractId, int clienteId) async {
+    print('✅ Aprobando contrato en blockchain vía backend...');
 
     _isLoading = true;
     _message = 'Aprobando contrato en blockchain...';
     notifyListeners();
 
     try {
-      final result = await _blockchainService.approveContract(contractId);
+      // El backend se encarga de todo: obtener clave del cliente, firmar, enviar a Ganache
+      ResponseModel response = await _blockchainApiService.approveContract(contractId, clienteId);
 
-      _message =
-          'Contrato aprobado en blockchain. Transaction hash: ${result['txHash']}';
-      _isLoading = false;
-      notifyListeners();
-      return result;
+      if (response.isSuccess && response.data != null) {
+        _message = 'Contrato aprobado en blockchain. Transaction hash: ${response.data['tx_hash']}';
+        print('✅ Contract approval result: ${response.data}');
+
+        _isLoading = false;
+        notifyListeners();
+
+        return {
+          'txHash': response.data['tx_hash'] ?? '',
+        };
+      } else {
+        _message = response.messageError ?? 'Error al aprobar el contrato en blockchain';
+        print('❌ Error: $_message');
+        _isLoading = false;
+        notifyListeners();
+        return null;
+      }
     } catch (e) {
       _message = 'Error al aprobar el contrato en blockchain: $e';
+      print('❌ Excepción: $_message');
       _isLoading = false;
       notifyListeners();
       return null;
     }
   }
 
-  // Make a payment for a contract
+  // Make a payment for a contract (vía backend Laravel)
   Future<Map<String, String>?> makePayment(
     int contractId,
     double amount,
+    int clienteId,
   ) async {
-    // Ensure blockchain is initialized
-    if (!await ensureInitialized()) {
-      return null;
-    }
+    print('💳 Realizando pago en blockchain vía backend...');
 
     _isLoading = true;
     _message = 'Realizando pago en blockchain...';
     notifyListeners();
 
     try {
-      final result = await _blockchainService.makePayment(contractId, amount);
+      // El backend se encarga de todo: obtener clave del cliente, firmar, enviar a Ganache
+      ResponseModel response = await _blockchainApiService.makePayment(contractId, clienteId, amount);
 
-      _message =
-          'Pago realizado en blockchain. Transaction hash: ${result['txHash']}';
-      _isLoading = false;
-      notifyListeners();
-      return result;
+      if (response.isSuccess && response.data != null) {
+        _message = 'Pago realizado en blockchain. Transaction hash: ${response.data['tx_hash']}';
+        print('✅ Payment result: ${response.data}');
+
+        _isLoading = false;
+        notifyListeners();
+
+        return {
+          'txHash': response.data['tx_hash'] ?? '',
+        };
+      } else {
+        _message = response.messageError ?? 'Error al realizar el pago en blockchain';
+        print('❌ Error: $_message');
+        _isLoading = false;
+        notifyListeners();
+        return null;
+      }
     } catch (e) {
       _message = 'Error al realizar el pago en blockchain: $e';
+      print('❌ Excepción: $_message');
       _isLoading = false;
       notifyListeners();
       return null;
     }
   }
 
-  // Get contract details from the blockchain
+  // Get contract details from the blockchain (vía backend Laravel)
   Future<Map<String, dynamic>?> getContractDetails(int contractId) async {
-    // Ensure blockchain is initialized
-    if (!await ensureInitialized()) {
-      return null;
-    }
+    print('🔍 Obteniendo detalles del contrato desde blockchain vía backend...');
 
     _isLoading = true;
     _message = 'Obteniendo detalles del contrato desde blockchain...';
     notifyListeners();
 
     try {
-      final details = await _blockchainService.getContractDetails(contractId);
+      ResponseModel response = await _blockchainApiService.getContractDetails(contractId);
 
-      _message = 'Detalles del contrato obtenidos correctamente';
-      _isLoading = false;
-      notifyListeners();
-      return details;
+      if (response.isSuccess && response.data != null) {
+        _message = 'Detalles del contrato obtenidos correctamente';
+        print('✅ Contract details: ${response.data}');
+
+        _isLoading = false;
+        notifyListeners();
+        return response.data['details'];
+      } else {
+        _message = response.messageError ?? 'Error al obtener detalles del contrato';
+        print('❌ Error: $_message');
+        _isLoading = false;
+        notifyListeners();
+        return null;
+      }
     } catch (e) {
       _message = 'Error al obtener detalles del contrato: $e';
+      print('❌ Excepción: $_message');
       _isLoading = false;
       notifyListeners();
       return null;
     }
   }
 
-  /// Check connection to Ganache by fetching the current block number
+  /// Check connection to blockchain (vía backend Laravel)
   Future<bool> checkGanacheConnection() async {
-    return await _blockchainService.checkGanacheConnection();
+    try {
+      ResponseModel response = await _blockchainApiService.getBlockchainStatus();
+      return response.isSuccess && response.data['connected'] == true;
+    } catch (e) {
+      print('❌ Error al verificar conexión blockchain: $e');
+      return false;
+    }
+  }
+
+  /// Assign wallet to a user (vía backend Laravel)
+  Future<ResponseModel> assignWallet(int userId) async {
+    try {
+      print('🔑 Asignando wallet a usuario $userId...');
+      ResponseModel response = await _blockchainApiService.assignWallet(userId);
+
+      if (response.isSuccess) {
+        print('✅ Wallet asignada exitosamente: ${response.data['wallet_address']}');
+      } else {
+        print('❌ Error al asignar wallet: ${response.messageError}');
+      }
+
+      return response;
+    } catch (e) {
+      print('❌ Excepción al asignar wallet: $e');
+      return ResponseModel(
+        statusCode: 500,
+        isSuccess: false,
+        isRequest: false,
+        isMessageError: true,
+        messageError: e.toString(),
+      );
+    }
+  }
+
+  /// Get balance of a user (vía backend Laravel)
+  Future<ResponseModel> getBalance(int userId) async {
+    try {
+      print('💰 Obteniendo balance para usuario $userId...');
+      ResponseModel response = await _blockchainApiService.getBalance(userId);
+
+      if (response.isSuccess) {
+        print('✅ Balance obtenido: ${response.data['balance_eth']} ETH');
+      } else {
+        print('❌ Error al obtener balance: ${response.messageError}');
+      }
+
+      return response;
+    } catch (e) {
+      print('❌ Excepción al obtener balance: $e');
+      return ResponseModel(
+        statusCode: 500,
+        isSuccess: false,
+        isRequest: false,
+        isMessageError: true,
+        messageError: e.toString(),
+      );
+    }
   }
 
   // Set message
@@ -406,7 +263,7 @@ class BlockchainProvider extends ChangeNotifier {
   // Dispose resources
   @override
   void dispose() {
-    _blockchainService.dispose();
+    // No resources to dispose for HTTP service
     super.dispose();
   }
 }

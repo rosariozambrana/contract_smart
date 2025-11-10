@@ -53,19 +53,32 @@ class _LoginScreenState extends State<LoginScreen> implements AuthenticatedScree
                       children: [
                         // cargar el icono de la aplicación
                         AppIconWidget(),
-                        const SizedBox(height: 20),
-                        const Text(
-                          'Bienvenido',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        const SizedBox(height: 5),
+                        Column(
+                          children: [
+                            Text(
+                              'RentChain',
+                              style: TextStyle(
+                                fontSize: 30,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1E5BA8), // Azul del icono
+                              ),
+                            ),
+                            Text(
+                              'Bolivia',
+                              style: TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF26C6B8), // Verde claro del icono
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 20),
                         const Text(
                           'Inicia sesión para continuar',
                           style: TextStyle(
-                            fontSize: 16,
+                            fontSize: 18,
                             color: Colors.grey,
                           ),
                         ),

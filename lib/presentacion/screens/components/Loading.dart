@@ -27,10 +27,26 @@ class Loading extends StatelessWidget {
             // importar la imagen de la carpeta assets y redondear la imagen
             ClipOval(
               child: Image.asset(
-                dotenv.env['IMAGE_EMPRESA'] ?? 'assets/images.jpg',
+                dotenv.env['IMAGE_EMPRESA'] ?? 'assets/icon/images.png',
                 width: 100,
                 height: 100,
                 fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  // Si la imagen falla, mostrar un ícono por defecto
+                  return Container(
+                    width: 100,
+                    height: 100,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withOpacity(0.3),
+                    ),
+                    child: const Icon(
+                      Icons.business,
+                      size: 50,
+                      color: Colors.white,
+                    ),
+                  );
+                },
               ),
             ),
             const SizedBox(height: 20),

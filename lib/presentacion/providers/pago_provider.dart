@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../../negocio/models/pago_model.dart';
+import '../../negocio/models/contrato_model.dart';
 import '../../negocio/models/response_model.dart';
 import '../../negocio/models/session_model.dart';
 import '../../negocio/models/user_model.dart';
 import '../../negocio/AuthenticatedNegocio.dart';
+import '../../negocio/ContratoNegocio.dart';
 import '../../negocio/PagoNegocio.dart';
 import '../../negocio/SessionNegocio.dart';
 import '../../negocio/UserNegocio.dart';
@@ -14,6 +16,7 @@ import '../../datos/notification_service.dart';
 
 class PagoProvider extends ChangeNotifier {
   final BlockchainProvider _blockchainProvider = BlockchainProvider.instance;
+  final ContratoNegocio _contratoNegocio = ContratoNegocio();
   final PagoNegocio _pagoNegocio = PagoNegocio();
   final AuthenticatedNegocio _authenticatedNegocio = AuthenticatedNegocio();
   final NotificationService _notificationService = NotificationService();
@@ -116,10 +119,56 @@ class PagoProvider extends ChangeNotifier {
         }
       }
 
-      // The blockchain will be automatically initialized when needed
+      // ✅ VALIDACIÓN 1: Verificar que el contrato esté aprobado
+      print('📄 Verificando estado del contrato ${pago.contratoId}...');
+      final contratoResponse = await _contratoNegocio.getContratoById(pago.contratoId);
+
+      if (!contratoResponse.isSuccess || contratoResponse.data == null) {
+        messageType = MessageType.error;
+        message = 'No se pudo cargar el contrato';
+        isLoading = false;
+        return false;
+      }
+
+      final contrato = ContratoModel.fromMap(contratoResponse.data);
+
+      if (!contrato.clienteAprobado || contrato.estado != 'aprobado') {
+        messageType = MessageType.error;
+        message = 'El contrato debe estar aprobado antes de realizar el pago. Estado actual: ${contrato.estado}';
+        isLoading = false;
+        return false;
+      }
+
+      print('✅ Contrato aprobado, verificando balance...');
+
+      // ✅ VALIDACIÓN 2: Verificar balance antes de intentar el pago
+      print('💰 Verificando balance del usuario ${_currentUser!.id}...');
+      final balanceResponse = await _blockchainProvider.getBalance(_currentUser!.id);
+
+      if (!balanceResponse.isSuccess) {
+        messageType = MessageType.error;
+        message = 'No se pudo verificar el balance de la cuenta';
+        isLoading = false;
+        return false;
+      }
+
+      final balanceEth = double.tryParse(balanceResponse.data['balance_eth']?.toString() ?? '0') ?? 0.0;
+      final requiredBalance = pago.monto + 0.003; // Incluir gas estimado
+
+      print('💰 Balance disponible: $balanceEth ETH');
+      print('💰 Balance requerido: $requiredBalance ETH (${pago.monto} ETH + 0.003 ETH gas)');
+
+      if (balanceEth < requiredBalance) {
+        messageType = MessageType.error;
+        message = 'Balance insuficiente. Requiere: ${requiredBalance.toStringAsFixed(6)} ETH, Disponible: ${balanceEth.toStringAsFixed(6)} ETH';
+        isLoading = false;
+        return false;
+      }
+
+      print('✅ Balance suficiente, procediendo con el pago...');
 
       // Make payment through blockchain first
-      final blockchainResult = await _blockchainProvider.makePayment(pago.contratoId, pago.monto);
+      final blockchainResult = await _blockchainProvider.makePayment(pago.contratoId, pago.monto, _currentUser!.id);
       if (blockchainResult == null) {
         messageType = MessageType.error;
         message = 'Error al procesar el pago en blockchain: ${_blockchainProvider.message}';
@@ -136,17 +185,9 @@ class PagoProvider extends ChangeNotifier {
         return false;
       }
 
-      // Now create the payment record in the database after blockchain processing
-      pago.blockChainId = txHash; // Set the blockchain ID in the model
-      pago.estado = 'completado'; // Set status to completed
-
-      ResponseModel response = await _pagoNegocio.createPago(pago);
-      if (!response.isSuccess || response.data == null) {
-        messageType = MessageType.error;
-        message = response.messageError ?? 'Error al crear el registro de pago en la base de datos';
-        isLoading = false;
-        return false;
-      }
+      // ✅ El backend ya creó el registro de pago automáticamente
+      // ✅ El backend ya actualizó el estado del contrato a "activo"
+      // No necesitamos llamar a pagos/store ni actualizar el estado manualmente
 
       messageType = MessageType.success;
       message = 'Pago procesado exitosamente a través de blockchain. ID de transacción: $txHash';

@@ -7,18 +7,20 @@ import '../../negocio/AuthenticatedNegocio.dart';
 import '../../negocio/SolicitudAlquilerNegocio.dart';
 import '../../negocio/InmuebleNegocio.dart';
 import '../../datos/notification_service.dart';
-import '../../datos/socket_service.dart';
+import '../../datos/reverb_service.dart';
 import '../../datos/ApiService.dart';
 import '../screens/components/message_widget.dart';
+import 'user_global_provider.dart';
 
 class SolicitudAlquilerProvider extends ChangeNotifier {
   final SolicitudAlquilerNegocio _solicitudNegocio = SolicitudAlquilerNegocio();
   final AuthenticatedNegocio _authenticatedNegocio = AuthenticatedNegocio();
   final InmuebleNegocio _inmuebleNegocio = InmuebleNegocio();
   final ApiService _apiService = ApiService.getInstance();
+  final UserGlobalProvider _userGlobalProvider = UserGlobalProvider();
 
   // Services for notifications
-  late SocketService _socketService;
+  late ReverbService _reverbService;
   late NotificationService _notificationService;
   final BuildContext? _context;
 
@@ -30,19 +32,35 @@ class SolicitudAlquilerProvider extends ChangeNotifier {
   MessageType _messageType = MessageType.info;
 
   SolicitudAlquilerProvider({BuildContext? context}) : _context = context {
-    _loadCurrentUser();
+    // Load current user
+    loadCurrentUser();
+
+    // Listen for changes to the global user state
+    _userGlobalProvider.addListener(_onUserChanged);
 
     // Initialize services if context is provided
     if (_context != null) {
-      _socketService = Provider.of<SocketService>(_context!, listen: false);
+      _reverbService = Provider.of<ReverbService>(_context!, listen: false);
       _notificationService = Provider.of<NotificationService>(_context!, listen: false);
     }
   }
 
   // Method to initialize services if not done in constructor
   void initializeServices(BuildContext context) {
-    _socketService = Provider.of<SocketService>(context, listen: false);
+    _reverbService = Provider.of<ReverbService>(context, listen: false);
     _notificationService = Provider.of<NotificationService>(context, listen: false);
+  }
+
+  // Cleanup listener when provider is disposed
+  @override
+  void dispose() {
+    _userGlobalProvider.removeListener(_onUserChanged);
+    super.dispose();
+  }
+
+  // Called when the global user state changes
+  void _onUserChanged() {
+    currentUser = _userGlobalProvider.currentUser;
   }
 
   // Helper method to check if services are initialized
@@ -50,28 +68,46 @@ class SolicitudAlquilerProvider extends ChangeNotifier {
   try {
     // ✅ Verificar si las variables late están inicializadas
     // Para variables late, intentar accederlas lanza error si no están inicializadas
-    final socketCheck = _socketService;
+    final reverbCheck = _reverbService;
     final notificationCheck = _notificationService;
-    
+
     // Si llegamos hasta aquí, ambos están inicializados
-    return socketCheck != null && notificationCheck != null;
+    return reverbCheck != null && notificationCheck != null;
   } catch (e) {
     // Si hay error, significa que las variables late no están inicializadas
     print('❌ Services not initialized: $e');
     return false;
   }
 }
-  Future<void> _loadCurrentUser() async {
+  Future<void> loadCurrentUser() async {
     try {
-      print('Cargando usuario actual solicitud de alquiler...');
-      currentUser = await _authenticatedNegocio.getUserSession();
-      if (_currentUser == null) {
+      isLoading = true;
+
+      // First try to get the user from the global provider
+      currentUser = _userGlobalProvider.currentUser;
+
+      // If not available in global provider, try to load from session
+      if (currentUser == null) {
+        currentUser = await _authenticatedNegocio.getUserSession();
+
+        // If we found a user in the session, update the global provider
+        if (currentUser != null) {
+          _userGlobalProvider.updateUser(currentUser);
+        }
+      }
+
+      if (currentUser == null) {
         messageType = MessageType.info;
         message = 'No se pudo cargar el usuario actual';
+      } else {
+        print('✅ Usuario actual cargado: ${currentUser!.name} (ID: ${currentUser!.id}, Tipo: ${currentUser!.tipoUsuario})');
       }
     } catch (e) {
       messageType = MessageType.error;
-      print('Error loading current user: $e');
+      message = 'Error al cargar el usuario actual: $e';
+      print('❌ Error loading current user: $e');
+    } finally {
+      isLoading = false;
     }
   }
   // el que realiza la solicitud de alquiler es el cliente, por lo que se asigna el userId del cliente a la solicitud
@@ -89,7 +125,7 @@ class SolicitudAlquilerProvider extends ChangeNotifier {
     try {
       isLoading = true;
       if (solicitud.userId == null || solicitud.userId == 0) {
-        await _loadCurrentUser();
+        await loadCurrentUser();
         if (currentUser == null) {
           message = 'No se pudo cargar el usuario actual';
           isLoading = false;
@@ -115,47 +151,8 @@ class SolicitudAlquilerProvider extends ChangeNotifier {
         _selectedSolicitud = SolicitudAlquilerModel.fromMap(response.data);
         message = 'Solicitud de alquiler enviada exitosamente';
 
-        // Send notification via WebSocket if services are initialized
-        if (_isServicesInitialized() && solicitud.inmueble != null) {
-          try {
-
-           
-            // Get the property owner ID
-            int propietarioId = solicitud.inmueble!.userId;
-
-               
-            // Send WebSocket notification
-            _socketService.emitRequestStatusChanged(
-              solicitudId: _selectedSolicitud!.id,
-              propertyName: solicitud.inmueble!.nombre,
-              status: 'pendiente',
-              clientId: currentUser!.id,    // ✅ Cliente que solicita
-              propietarioId: propietarioId, // ✅ Propietario que recibe
-            );
-
-
-            
-            /*// Show local notification to the property owner
-            _notificationService.showNotification(
-              id: _selectedSolicitud!.id,
-              title: 'Nueva Solicitud de Alquiler',
-              body: 'Has recibido una nueva solicitud para la propiedad: ${solicitud.inmueble!.nombre}',
-              payload: 'new_request_${_selectedSolicitud!.id}',
-            );*/
-
-            _notificationService.showRequestStatusChangedNotification(
-              solicitudId: _selectedSolicitud!.id,
-              propertyName: solicitud.inmueble!.nombre,
-              status: 'pendiente',
-              userType: 'propietario',
-            );
-
-            print('✅ [Provider] Local notification shown successfully');
-            print('New rental request notification sent');
-          } catch (notificationError) {
-            print('Error sending new rental request notification: $notificationError');
-          }
-        }
+        // ✅ Notificación manejada por evento Reverb del backend - No enviar manualmente
+        print('✅ [Provider] Solicitud creada - Backend enviará notificación vía Reverb');
 
         await loadSolicitudesByClienteId(); // Refresh the list
         isLoading = false;
@@ -174,7 +171,7 @@ class SolicitudAlquilerProvider extends ChangeNotifier {
 
   Future<void> loadSolicitudesByClienteId() async {
     if (currentUser == null) {
-      await _loadCurrentUser();
+      await loadCurrentUser();
       if (currentUser == null) {
         message = 'No se pudo cargar el usuario actual';
         return;
@@ -207,36 +204,84 @@ class SolicitudAlquilerProvider extends ChangeNotifier {
   }
 
   Future<void> loadSolicitudesByPropietarioId() async {
+    print('🔄 ═══════════════════════════════════════════════════════');
+    print('🔄 CARGANDO SOLICITUDES DEL PROPIETARIO');
+
     if (currentUser == null) {
-      await _loadCurrentUser();
+      print('⚠️ Usuario actual es NULL, cargando...');
+      await loadCurrentUser();
       if (currentUser == null) {
+        print('❌ No se pudo cargar el usuario actual');
         message = 'No se pudo cargar el usuario actual';
         return;
       }
     }
 
+    print('👤 Usuario actual cargado:');
+    print('   - Nombre: ${currentUser!.name}');
+    print('   - ID: ${currentUser!.id}');
+    print('   - Tipo: ${currentUser!.tipoUsuario}');
+    print('   - Email: ${currentUser!.email}');
+
     _isLoading = true;
     notifyListeners();
 
     try {
+      print('🌐 Llamando endpoint: getSolicitudesByPropietarioId(${currentUser!.id})');
       ResponseModel response = await _solicitudNegocio.getSolicitudesByPropietarioId(currentUser!.id);
 
+      print('📥 Respuesta recibida:');
+      print('   - isSuccess: ${response.isSuccess}');
+      print('   - statusCode: ${response.statusCode}');
+      print('   - message: ${response.message}');
+      print('   - data: ${response.data}');
+      print('   - messageError: ${response.messageError}');
+
       if (response.isSuccess && response.data != null) {
+        print('✅ Respuesta exitosa, parseando datos...');
+
+        // Verificar tipo de data
+        if (response.data is List) {
+          print('📊 Data es una Lista con ${(response.data as List).length} elementos');
+        } else {
+          print('⚠️ Data NO es una Lista, es: ${response.data.runtimeType}');
+        }
+
         solicitudes = SolicitudAlquilerModel.fromJsonList(response.data);
 
+        print('📋 Solicitudes parseadas: ${_solicitudes.length}');
+
+        for (var i = 0; i < _solicitudes.length; i++) {
+          var solicitud = _solicitudes[i];
+          print('   [$i] Solicitud ID: ${solicitud.id}');
+          print('       - Cliente ID: ${solicitud.userId}');
+          print('       - Inmueble ID: ${solicitud.inmuebleId}');
+          print('       - Estado: ${solicitud.estado}');
+          print('       - Inmueble: ${solicitud.inmueble?.nombre ?? "NULL"}');
+          print('       - Cliente: ${solicitud.cliente?.name ?? "NULL"}');
+        }
+
         // Ensure complete data for each solicitud
+        print('🔧 Completando datos de solicitudes...');
         for (var solicitud in _solicitudes) {
           await _ensurePropertyDataComplete(solicitud);
           await _ensureUserDataComplete(solicitud);
         }
 
+        print('✅ Solicitudes cargadas completamente: ${_solicitudes.length}');
         message = null; // Reset message on successful load
       } else {
+        print('❌ Respuesta no exitosa o data es NULL');
         message = response.messageError ?? 'No se encontraron solicitudes para este propietario';
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ EXCEPCIÓN al cargar solicitudes: $e');
+      print('📍 Stack trace: $stackTrace');
       message = 'Error al cargar las solicitudes del propietario: $e';
     } finally {
+      print('🏁 Finalizando carga de solicitudes');
+      print('   - Total solicitudes: ${_solicitudes.length}');
+      print('═══════════════════════════════════════════════════════');
       isLoading = false;
     }
   }
@@ -275,13 +320,6 @@ class SolicitudAlquilerProvider extends ChangeNotifier {
         // Send notification via WebSocket if services are initialized and we have the solicitud data
         if (_isServicesInitialized() && solicitud != null && solicitud.inmueble != null && solicitud.cliente != null) {
           try {
-            _socketService.emitRequestStatusChanged(
-              solicitudId: id,
-              propertyName: solicitud.inmueble!.nombre,
-              status: estado,
-              clientId: solicitud.cliente!.id,        // ✅ Cliente que recibe notificación
-              propietarioId: solicitud.inmueble!.userId, // ✅ Propietario que envía
-            );
 
             // Show local notification
             _notificationService.showRequestStatusChangedNotification(
@@ -303,13 +341,6 @@ class SolicitudAlquilerProvider extends ChangeNotifier {
               SolicitudAlquilerModel updatedSolicitud = SolicitudAlquilerModel.fromMap(response.data);
               if (updatedSolicitud.inmueble != null && updatedSolicitud.cliente != null) {
                 // Send WebSocket notification
-                _socketService.emitRequestStatusChanged(
-                  solicitudId: id,
-                  propertyName: updatedSolicitud.inmueble!.nombre,
-                  status: estado,
-                  clientId: updatedSolicitud.cliente!.id,
-                  propietarioId: updatedSolicitud.inmueble!.userId,
-                );
 
                 // Show local notification
                 _notificationService.showRequestStatusChangedNotification(

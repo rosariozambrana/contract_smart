@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import '../../../providers/blockchain_provider.dart';
 import '../../../../negocio/models/solicitud_alquiler_model.dart';
 import '../../../../negocio/models/contrato_model.dart';
 import '../../../providers/contrato_provider.dart';
 import '../../../../negocio/models/condicional_model.dart';
+import '../../../../core/constants/crypto_constants.dart';
 
 class CrearContratoScreen extends StatefulWidget {
   final SolicitudAlquilerModel solicitud;
@@ -28,6 +28,7 @@ class _CrearContratoScreenState extends State<CrearContratoScreen> {
 
   DateTime _fechaInicio = DateTime.now();
   DateTime _fechaFin = DateTime.now().add(const Duration(days: 365));
+  String _usdEquivalent = ''; // Para mostrar conversión en tiempo real
 
   @override
   void initState() {
@@ -43,6 +44,10 @@ class _CrearContratoScreenState extends State<CrearContratoScreen> {
     // Set initial monto based on property price
     if (widget.solicitud.inmueble != null) {
       _montoController.text = widget.solicitud.inmueble!.precio.toString();
+      // Calcular conversión USD inicial
+      setState(() {
+        _usdEquivalent = CryptoConstants.formatUsdFromEth(widget.solicitud.inmueble!.precio);
+      });
     }
 
     // Initialize date controllers
@@ -101,6 +106,10 @@ class _CrearContratoScreenState extends State<CrearContratoScreen> {
   }
 
   void _addCondicional() {
+    String tempDescripcion = '';
+    String tempTipoCondicion = 'otro';
+    String tempAccion = 'otro';
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -116,7 +125,7 @@ class _CrearContratoScreenState extends State<CrearContratoScreen> {
                 ),
                 maxLines: 2,
                 onChanged: (value) {
-                  // Store temporarily
+                  tempDescripcion = value;
                 },
               ),
               const SizedBox(height: 16),
@@ -124,6 +133,7 @@ class _CrearContratoScreenState extends State<CrearContratoScreen> {
                 decoration: const InputDecoration(
                   labelText: 'Tipo de Condición',
                 ),
+                value: tempTipoCondicion,
                 items: const [
                   DropdownMenuItem(value: 'retraso_pago', child: Text('Retraso en el Pago')),
                   DropdownMenuItem(value: 'daños', child: Text('Daños a la Propiedad')),
@@ -132,7 +142,7 @@ class _CrearContratoScreenState extends State<CrearContratoScreen> {
                   DropdownMenuItem(value: 'otro', child: Text('Otro')),
                 ],
                 onChanged: (value) {
-                  // Store temporarily
+                  if (value != null) tempTipoCondicion = value;
                 },
               ),
               const SizedBox(height: 16),
@@ -140,6 +150,7 @@ class _CrearContratoScreenState extends State<CrearContratoScreen> {
                 decoration: const InputDecoration(
                   labelText: 'Acción a Tomar',
                 ),
+                value: tempAccion,
                 items: const [
                   DropdownMenuItem(value: 'multa', child: Text('Aplicar Multa')),
                   DropdownMenuItem(value: 'reparacion', child: Text('Reparación')),
@@ -148,7 +159,7 @@ class _CrearContratoScreenState extends State<CrearContratoScreen> {
                   DropdownMenuItem(value: 'otro', child: Text('Otra Acción')),
                 ],
                 onChanged: (value) {
-                  // Store temporarily
+                  if (value != null) tempAccion = value;
                 },
               ),
             ],
@@ -163,14 +174,23 @@ class _CrearContratoScreenState extends State<CrearContratoScreen> {
           ),
           ElevatedButton(
             onPressed: () {
-              // For simplicity, just add a default conditional
+              if (tempDescripcion.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Por favor ingrese una descripción'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+                return;
+              }
+
               setState(() {
                 context.read<ContratoProvider>().condicionales.add(
                   CondicionalModel(
                     id: context.read<ContratoProvider>().condicionales.length + 1,
-                    descripcion: 'Nueva condición',
-                    tipoCondicion: 'otro',
-                    accion: 'otro',
+                    descripcion: tempDescripcion,
+                    tipoCondicion: tempTipoCondicion,
+                    accion: tempAccion,
                     parametros: {},
                   ),
                 );
@@ -199,8 +219,6 @@ class _CrearContratoScreenState extends State<CrearContratoScreen> {
       try {
         context.read<ContratoProvider>().isLoading = true;
         final provider = Provider.of<ContratoProvider>(context, listen: false);
-        final blockchainProvider = Provider.of<BlockchainProvider>(context, listen: false);
-        print('blockchainProvider.isLoading ${blockchainProvider.isInitialized}');
         final success = await provider.createContratoFromSolicitud(
           widget.solicitud,
           fechaInicio: _fechaInicio,
@@ -342,21 +360,56 @@ class _CrearContratoScreenState extends State<CrearContratoScreen> {
                     TextFormField(
                       controller: _montoController,
                       decoration: const InputDecoration(
-                        labelText: 'Monto Mensual',
+                        labelText: 'Monto Mensual (ETH)',
                         border: OutlineInputBorder(),
-                        prefixText: '\$ ',
+                        hintText: '2.0',
+                        helperText: 'Rango recomendado: 0.2 - 10 ETH',
+                        suffixText: 'ETH',
                       ),
-                      keyboardType: TextInputType.number,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      onChanged: (value) {
+                        final eth = double.tryParse(value);
+                        if (eth != null && eth > 0) {
+                          setState(() {
+                            _usdEquivalent = CryptoConstants.formatUsdFromEth(eth);
+                          });
+                        } else {
+                          setState(() {
+                            _usdEquivalent = '';
+                          });
+                        }
+                      },
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Por favor ingrese un monto';
+                          return 'Por favor ingrese un monto en ETH';
                         }
-                        if (double.tryParse(value) == null) {
+                        final eth = double.tryParse(value);
+                        if (eth == null) {
                           return 'Por favor ingrese un número válido';
+                        }
+                        if (eth <= 0) {
+                          return 'El monto debe ser mayor a 0';
+                        }
+                        if (eth > 100) {
+                          return 'Monto muy alto. Usar rango 0.2 - 10 ETH';
                         }
                         return null;
                       },
                     ),
+                    if (_usdEquivalent.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 12),
+                        child: Text(
+                          '≈ $_usdEquivalent USD/mes',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                    ],
 
                     const SizedBox(height: 16),
 

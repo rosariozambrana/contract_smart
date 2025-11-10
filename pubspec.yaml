@@ -63,9 +63,16 @@ dependencies:
   flutter_datetime_picker_plus: ^2.1.0
   cached_network_image: ^3.3.0
 
-  socket_io_client: ^2.0.3+1
-
   flutter_dotenv: ^5.2.1
+
+  # WebSocket - Laravel Reverb
+  web_socket_channel: ^3.0.1
+
+  # Google Maps y Geolocalización
+  google_maps_flutter: ^2.9.0
+  geolocator: ^13.0.2
+  geocoding: ^3.0.0
+  permission_handler: ^11.3.1
 
   overlay_support: ^2.1.0
 
@@ -83,7 +90,7 @@ dev_dependencies:
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: false
-  image_path: "assets/icon/images.jpg"
+  image_path: "assets/icon/images.png"
   min_sdk_android: 21 # android min sdk min:16, default 21
 
 # For information on the generic Dart part of this file, see the
@@ -104,8 +111,8 @@ flutter:
   assets:
     - .env
     - assets/
-    - assets/icon/images.jpg
-    - assets/rentals/build/contracts/RentalContract.json
+    - assets/icon/images.png
+    # - assets/rentals/build/contracts/RentalContract.json  # Comentado: archivo no existe
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

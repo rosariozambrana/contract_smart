@@ -16,15 +16,13 @@ import 'presentacion/screens/home_cliente/home_cliente_screen.dart';
 import 'presentacion/screens/home_propietario/home_propietario_screen.dart';
 import 'presentacion/screens/inmueble/inmueble_screen.dart';
 import 'presentacion/screens/visitante/home_visitante_screen.dart';
-import 'presentacion/screens/admin/websocket_admin_screen.dart';
 import 'presentacion/screens/notifications/notification_center_screen.dart';
 
 // CAPA DE DATOS
 import 'datos/ApiService.dart';
 import 'datos/UrlConfigProvider.dart';
 import 'datos/notification_service.dart';
-import 'datos/socket_service.dart';
-import 'datos/websocket_admin_service.dart';
+import 'datos/reverb_service.dart';
 import 'package:overlay_support/overlay_support.dart'; 
 
 void main() async {
@@ -36,43 +34,35 @@ void main() async {
 
   // Initialize notification service
   final notificationService = NotificationService();
-  final socketService = SocketService();
+  final reverbService = ReverbService();
   await notificationService.initialize();
 
   // Create and initialize the UrlConfigProvider first (espera a que cargue SharedPreferences)
   final urlConfigProvider = await UrlConfigProvider.create();
 
-  // Set it as the shared provider for ApiService and SocketService
+  // Set it as the shared provider for ApiService
   ApiService.setSharedUrlConfigProvider(urlConfigProvider);
-  socketService.setUrlConfigProvider(urlConfigProvider);
 
-  // Initialize socket service after UrlConfigProvider is created
-
-  //socketService.initialize();
-
-  // Initialize websocket admin service
-  final websocketAdminService = WebSocketAdminService(socketService);
+  // Initialize Reverb service
+  await reverbService.initialize();
 
   runApp(MyApp(
     urlConfigProvider: urlConfigProvider,
     notificationService: notificationService,
-    socketService: socketService,
-    websocketAdminService: websocketAdminService,
+    reverbService: reverbService,
   ));
 }
 
 class MyApp extends StatefulWidget {
   final UrlConfigProvider urlConfigProvider;
   final NotificationService notificationService;
-  final SocketService socketService;
-  final WebSocketAdminService websocketAdminService;
+  final ReverbService reverbService;
 
   const MyApp({
     super.key,
     required this.urlConfigProvider,
     required this.notificationService,
-    required this.socketService,
-    required this.websocketAdminService,
+    required this.reverbService,
   });
 
   @override
@@ -87,8 +77,7 @@ class _MyAppState extends State<MyApp> {
 
   @override
   void dispose() {
-    widget.socketService.dispose();
-    widget.websocketAdminService.dispose();
+    widget.reverbService.dispose();
     super.dispose();
   }
 
@@ -104,37 +93,24 @@ class _MyAppState extends State<MyApp> {
         ChangeNotifierProvider<UserGlobalProvider>.value(
           value: UserGlobalProvider(),
         ),
-        // Provide socket service
-         Provider<SocketService>.value(
-            value: widget.socketService,
-         ),
-        // Provide websocket admin service
-        Provider<WebSocketAdminService>.value(
-            value: widget.websocketAdminService,
+        // Provide Reverb service
+        Provider<ReverbService>.value(
+          value: widget.reverbService,
         ),
         // Provide notification service
-       Provider<NotificationService>.value(
+        Provider<NotificationService>.value(
           value: widget.notificationService,
         ),
         // BlockchainProvider is already provided as a singleton below
         ChangeNotifierProvider(create: (context) => AuthenticatedProvider()),
         ChangeNotifierProvider(create: (context) => InmuebleProvider()),
-        ChangeNotifierProvider(create: (context) => SolicitudAlquilerProvider()),
+        ChangeNotifierProvider(create: (context) => SolicitudAlquilerProvider(context: context)),
         // Use the singleton instance of BlockchainProvider
         ChangeNotifierProvider<BlockchainProvider>.value(value: BlockchainProvider.instance),
-        ChangeNotifierProvider(create: (context) => ContratoProvider()),
+        ChangeNotifierProvider(create: (context) => ContratoProvider(context: context)),
         ChangeNotifierProvider(create: (context) => PagoProvider()),
       ],
 
-       builder: (context, child) {
-      // Inicializar socket DESPUÉS de que el provider esté disponible
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          // Simplemente llamar initialize (ya verifica internamente si está conectado)
-            widget.socketService.initialize();
-        });
-        
-        return child!;
-      },
       child: OverlaySupport.global(
         child: MaterialApp(
         title: dotenv.env['PROJECT_NAME'] ?? 'Alquileres',
@@ -162,7 +138,6 @@ class _MyAppState extends State<MyApp> {
           '/homePropietario': (context) => HomePropietarioScreen(),
           '/homeCliente': (context) => HomeClienteScreen(),
           '/editProfile': (context) => EditProfileScreen(),
-          '/websocketAdmin': (context) => WebSocketAdminScreen(),
           '/notifications': (context) => NotificationCenterScreen(),
         },
       ),
