@@ -54,3 +54,7 @@ MIGRACION_REVERB_COMPLETADA.md
 PASOS_SIGUIENTES.md
 README.md
 WEBSOCKET_MIGRATION_COMPLETE.md
+
+# Archivos temporales de Windows
+nul
+android/nul
