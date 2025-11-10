@@ -1,0 +1,23 @@
+# Auto detect text files and normalize line endings
+* text=auto
+
+# Ensure all text files use CRLF on Windows checkout
+*.dart text
+*.swift text
+*.cc text
+*.cpp text
+*.h text
+*.cmake text
+*.md text
+*.yaml text
+*.yml text
+*.json text
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.ttf binary
+*.otf binary
